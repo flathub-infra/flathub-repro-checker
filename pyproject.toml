@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["**/__pycache__"]
+
+[project]
+name = "flathub_repro_checker"
+version = "0.0.0"
+description = "A reproducibility checker for Flathub"
+authors = [
+  {name = "bbhtt", email = "bbhtt@bbhtt.space"},
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = "<4.0,>=3.10"
+dependencies = [
+  "diffoscope"
+]
+
+[project.urls]
+Homepage = "https://github.com/flathub-infra/flathub-repro-checker"
+Repository = "https://github.com/flathub-infra/flathub-repro-checker.git"
+Issues = "https://github.com/flathub-infra/flathub-repro-checker/issues"
+
+[project.scripts]
+flathub-repro-checker = "flathub_repro_checker.__main__:main"
+
+[dependency-groups]
+dev = [
+#   "pytest<9.0.0,>=8.3.3",
+    "mypy<2.0.0,>=1.11.2",
+    "ruff<1.0.0,>=0.6.7",
+    "pre-commit<4.0.0,>=3.8.0",
+]
+
+[tool.mypy]
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_any_unimported = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+extra_checks = true
+no_implicit_optional = true
+no_implicit_reexport = true
+show_error_codes = true
+strict = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 100
+include = ["*.py"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C4",
+  "DTZ",
+  "E",
+  "ERA",
+  "F",
+  "I",
+  "ICN",
+  "PIE",
+  "PL",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "T201",
+  "UP",
+  "W",
+]
+
+ignore = [
+  "PLR2004",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  "S105",
+  "S607",
+  "S603",
+]
+
+[tool.ruff.format]
+line-ending = "lf"
+quote-style = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+#[tool.pytest.ini_options]
+#testpaths = [
+#    "tests",
+#]
