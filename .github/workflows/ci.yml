@@ -96,13 +96,13 @@ jobs:
           name: diffoscope-org.signal.Signal
           path: ./diffoscope_result-org.signal.Signal
 
-      - name: Run check on org.strawberrymusicplayer.strawberry
+      - name: Run check on de.klayout.KLayout
         continue-on-error: true
-        run: uv run flathub-repro-checker --flatpak-id org.strawberrymusicplayer.strawberry
+        run: uv run flathub-repro-checker --flatpak-id de.klayout.KLayout
 
-      - name: Upload result of org.strawberrymusicplayer.strawberry
+      - name: Upload result of de.klayout.KLayout
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-org.strawberrymusicplayer.strawberry
-          path: ./diffoscope_result-org.strawberrymusicplayer.strawberry
+          name: diffoscope-de.klayout.KLayout
+          path: ./diffoscope_result-de.klayout.KLayout
