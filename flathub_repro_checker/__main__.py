@@ -238,40 +238,49 @@ def get_baseapp_ref(flatpak_id: str) -> list[str]:
 
 
 def get_base_runtime_version(ref_id: str, ref_branch: str) -> str | None:
+    base_runtime_version = None
     ref = f"{ref_id}//{ref_branch}"
     result = _run_flatpak(
         ["remote-info", "-m", "flathub", ref],
         capture_output=True,
     )
     if result is None:
-        raise RuntimeError(f"Failed to get remote-info for '{ref}'")
+        logging.error("Failed to run remote-info on '%s'", ref)
 
-    version_pattern = re.compile(r"^2\d\.08$")
-    in_target_section = False
-    versions: list[str] = []
+    if result is not None:
+        version_pattern = re.compile(r"^2\d\.08$")
+        in_target_section = False
+        versions: list[str] = []
 
-    for line in result.stdout.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_target_section = stripped == "[Extension org.freedesktop.Platform.GL]"
-            continue
-        if not in_target_section or "=" not in stripped:
-            continue
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                in_target_section = stripped == "[Extension org.freedesktop.Platform.GL]"
+                continue
+            if not in_target_section or "=" not in stripped:
+                continue
 
-        key, _, value = stripped.partition("=")
-        key = key.strip()
-        value = value.strip()
+            key, _, value = stripped.partition("=")
+            key = key.strip()
+            value = value.strip()
 
-        if key == "versions":
-            versions.extend(v.strip() for v in value.split(";"))
-        elif key == "version":
-            versions.append(value)
+            if key == "versions":
+                versions.extend(v.strip() for v in value.split(";"))
+            elif key == "version":
+                versions.append(value)
 
-    for version in versions:
-        if version_pattern.fullmatch(version):
-            return version
+        for version in versions:
+            if version_pattern.fullmatch(version):
+                base_runtime_version = version
 
-    raise RuntimeError(f"Failed to determine base runtime version for '{ref}'")
+    if not base_runtime_version:
+        logging.error(
+            "Failed to determine the version of the base runtime for '%s'."
+            "This may result in missing build dependencies during the build process",
+            ref,
+        )
+
+    return base_runtime_version
 
 
 def get_build_extension_refs(flatpak_id: str) -> list[str]:
@@ -283,8 +292,9 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
         runtime_ref = get_runtime_ref(flatpak_id)[0]
         runtime_id, runtime_branch = runtime_ref.split("//", 1)
         base_branch = get_base_runtime_version(runtime_id, runtime_branch)
-        for s in sdk_exts:
-            refs.append(f"{s}//{base_branch}")
+        if base_branch:
+            for s in sdk_exts:
+                refs.append(f"{s}//{base_branch}")
     for ext_id, ext_info in add_build_exts.items():
         refs.append(f"{ext_id}//{ext_info.get('version', 'stable')}")
     return refs
