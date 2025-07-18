@@ -342,7 +342,15 @@ def update_refs_to_pinned_commit(flatpak_id: str) -> bool:
     success = True
     for ref, commit in get_pinned_refs(flatpak_id).items():
         result = _run_flatpak(
-            ["update", "--assumeyes", "--noninteractive", f"--commit={commit}", ref],
+            [
+                "update",
+                "--assumeyes",
+                "--noninteractive",
+                "--no-related",
+                "--no-deps",
+                f"--commit={commit}",
+                ref,
+            ],
             message=f"Failed to pin {ref} to commit {commit}",
         )
         if result is None:
