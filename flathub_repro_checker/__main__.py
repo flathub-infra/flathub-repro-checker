@@ -549,7 +549,7 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
 
         if not setup_flathub():
             return False
-        installed = install_flatpak(f"{flatpak_id}//stable")
+        installed = install_flatpak(f"app/{flatpak_id}//stable")
         if not installed:
             return False
         if not save_manifest(flatpak_id):
@@ -655,7 +655,7 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Flathub reproducibility checker")
-    parser.add_argument("--flatpak-id", required=True, help="Flatpak ID on Flathub stable repo")
+    parser.add_argument("--appid", required=True, help="App ID on Flathub")
     parser.add_argument(
         "--output-dir",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
@@ -684,7 +684,7 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        flatpak_id = args.flatpak_id
+        flatpak_id = args.appid
 
         if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
             logging.error("Running the checker against '%s' is unsupported right now", flatpak_id)

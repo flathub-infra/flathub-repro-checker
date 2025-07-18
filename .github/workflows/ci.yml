@@ -74,7 +74,7 @@ jobs:
 
       - name: Run check on io.github.lo2dev.Echo
         continue-on-error: true
-        run: uv run flathub-repro-checker --flatpak-id io.github.lo2dev.Echo
+        run: uv run flathub-repro-checker --appid io.github.lo2dev.Echo
 
       - name: Upload result of io.github.lo2dev.Echo
         # 4.6.2
@@ -86,7 +86,7 @@ jobs:
       - name: Run check on org.signal.Signal
         continue-on-error: true
         if: ${{ matrix.platform == 'amd64' }}
-        run: uv run flathub-repro-checker --flatpak-id org.signal.Signal
+        run: uv run flathub-repro-checker --appid org.signal.Signal
 
       - name: Upload result of org.signal.Signal
         if: ${{ matrix.platform == 'amd64' }}
@@ -98,7 +98,7 @@ jobs:
 
       - name: Run check on de.klayout.KLayout
         continue-on-error: true
-        run: uv run flathub-repro-checker --flatpak-id de.klayout.KLayout
+        run: uv run flathub-repro-checker --appid de.klayout.KLayout
 
       - name: Upload result of de.klayout.KLayout
         # 4.6.2
