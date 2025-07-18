@@ -161,8 +161,8 @@ def setup_flathub() -> bool:
     )
 
 
-def is_ref_in_remote(ref_id: str, ref_branch: str = "stable") -> bool:
-    ref = f"{ref_id}//{ref_branch}"
+def is_ref_in_remote(ref_type: str, ref_id: str, ref_arch: str, ref_branch: str) -> bool:
+    ref = f"{ref_type}/{ref_id}/{ref_arch}/{ref_branch}"
     return (
         _run_flatpak(
             ["remote-info", "flathub", ref],
@@ -313,8 +313,9 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
 
 def get_sources_ref(flatpak_id: str) -> list[str]:
     sources_ref: list[str] = []
-    sources_ref_str = f"runtime/{flatpak_id}.Sources/x86_64/stable"
-    if is_ref_in_remote(sources_ref_str):
+    sources_ref_parts = ("runtime", f"{flatpak_id}.Sources", "x86_64", "stable")
+    sources_ref_str = "/".join(sources_ref_parts)
+    if is_ref_in_remote(*sources_ref_parts):
         sources_ref = [sources_ref_str]
     else:
         logging.warning("Failed to find sources extension for '%s'", flatpak_id)
