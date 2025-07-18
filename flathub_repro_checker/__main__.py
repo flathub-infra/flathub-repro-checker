@@ -553,15 +553,16 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
             return False
         if not save_manifest(flatpak_id):
             return False
-        if not handle_build_deps(flatpak_id):
-            return False
-
-        handled_build_deps = True
 
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
             logging.error("Flatpak manifest not found")
             return False
+
+        if not handle_build_deps(flatpak_id):
+            return False
+
+        handled_build_deps = True
 
         if not build_flatpak(manifest_path):
             return False
