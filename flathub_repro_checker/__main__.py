@@ -240,19 +240,27 @@ def parse_manifest(flatpak_id: str) -> dict[str, Any]:
 
 def get_runtime_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
-    return [f"{manifest['runtime']}//{manifest['runtime-version']}"]
+    if "runtime" in manifest and "runtime-version" in manifest:
+        return [f"{manifest['runtime']}//{manifest['runtime-version']}"]
+    logging.error("Missing 'runtime' or 'runtime-version' in manifest for '%s'", flatpak_id)
+    return []
 
 
 def get_sdk_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
-    return [f"{manifest['sdk']}//{manifest['runtime-version']}"]
+    if "sdk" in manifest and "runtime-version" in manifest:
+        return [f"{manifest['sdk']}//{manifest['runtime-version']}"]
+    logging.error("Missing 'sdk' or 'runtime-version' in manifest for '%s'", flatpak_id)
+    return []
 
 
 def get_baseapp_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     base = manifest.get("base")
     base_version = manifest.get("base-version")
-    return [f"{base}//{base_version}"] if base and base_version else []
+    if base and base_version:
+        return [f"{base}//{base_version}"]
+    return []
 
 
 def get_base_runtime_version(ref_id: str, ref_branch: str) -> str | None:
@@ -307,14 +315,21 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
     add_build_exts = manifest.get("add-build-extensions", {})
     refs: list[str] = []
     if sdk_exts:
-        runtime_ref = get_runtime_ref(flatpak_id)[0]
-        runtime_id, runtime_branch = runtime_ref.split("//", 1)
-        base_branch = get_base_runtime_version(runtime_id, runtime_branch)
-        if base_branch:
-            for s in sdk_exts:
-                refs.append(f"{s}//{base_branch}")
-    for ext_id, ext_info in add_build_exts.items():
-        refs.append(f"{ext_id}//{ext_info.get('version', 'stable')}")
+        runtime_refs = get_runtime_ref(flatpak_id)
+        if runtime_refs and "//" in runtime_refs[0]:
+            runtime_id, runtime_branch = runtime_refs[0].split("//", 1)
+            base_branch = get_base_runtime_version(runtime_id, runtime_branch)
+            if base_branch:
+                for s in sdk_exts:
+                    refs.append(f"{s}//{base_branch}")
+            else:
+                logging.warning("No base branch found for runtime '%s'", runtime_refs[0])
+
+    if isinstance(add_build_exts, dict):
+        for ext_id, ext_info in add_build_exts.items():
+            version = ext_info.get("version", "stable") if isinstance(ext_info, dict) else "stable"
+            refs.append(f"{ext_id}//{version}")
+
     return refs
 
 
@@ -330,10 +345,16 @@ def get_sources_ref(flatpak_id: str) -> list[str]:
 
 
 def get_build_deps_refs(flatpak_id: str) -> list[str]:
+    runtime_ref = get_runtime_ref(flatpak_id)
+    sdk_ref = get_sdk_ref(flatpak_id)
+
+    if not (runtime_ref or sdk_ref):
+        return []
+
     return list(
         {
-            *get_runtime_ref(flatpak_id),
-            *get_sdk_ref(flatpak_id),
+            *runtime_ref,
+            *sdk_ref,
             *get_build_extension_refs(flatpak_id),
             *get_baseapp_ref(flatpak_id),
             *get_sources_ref(flatpak_id),
@@ -343,23 +364,35 @@ def get_build_deps_refs(flatpak_id: str) -> list[str]:
 
 def get_pinned_refs(flatpak_id: str) -> dict[str, str]:
     manifest = parse_manifest(flatpak_id)
-    refs = {
-        get_runtime_ref(flatpak_id)[0]: manifest["runtime-commit"],
-        get_sdk_ref(flatpak_id)[0]: manifest["sdk-commit"],
-    }
+    refs: dict[str, str] = {}
+    runtime_ref = get_runtime_ref(flatpak_id)
+    sdk_ref = get_sdk_ref(flatpak_id)
+    if runtime_ref and sdk_ref:
+        refs[runtime_ref[0]] = manifest["runtime-commit"]
+        refs[sdk_ref[0]] = manifest["sdk-commit"]
     baseapp = get_baseapp_ref(flatpak_id)
     if baseapp:
-        refs[baseapp[0]] = manifest["base-commit"]
+        base_commit = manifest["base-commit"]
+        refs[baseapp[0]] = base_commit
+
     return refs
 
 
 def install_build_deps_refs(flatpak_id: str) -> bool:
-    return all(install_flatpak(ref) for ref in get_build_deps_refs(flatpak_id))
+    build_deps_refs = get_build_deps_refs(flatpak_id)
+    if not build_deps_refs:
+        return False
+    return all(install_flatpak(ref) for ref in build_deps_refs)
 
 
 def update_refs_to_pinned_commit(flatpak_id: str) -> bool:
     success = True
-    for ref, commit in get_pinned_refs(flatpak_id).items():
+    pinned_refs = get_pinned_refs(flatpak_id)
+    if not pinned_refs:
+        logging.error("No pinned refs found in manifest for '%s'", flatpak_id)
+        return False
+
+    for ref, commit in pinned_refs.items():
         result = _run_flatpak(
             [
                 "update",
