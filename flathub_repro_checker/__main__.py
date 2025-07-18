@@ -14,15 +14,17 @@ from typing import Any, TextIO
 
 from . import __version__
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
 REPRO_DATADIR = os.path.join(
     os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")), "flathub_repro_checker"
 )
 FLATPAK_ROOT_DIR = os.path.join(REPRO_DATADIR, "flatpak_root")
 FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 os.makedirs(REPRO_DATADIR, exist_ok=True)
+logging.info("Created data directory %s", REPRO_DATADIR)
 os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logging.info("Created flatpak-builder state directory %s", FLATPAK_BUILDER_STATE_DIR)
 
 
 class Lock:
