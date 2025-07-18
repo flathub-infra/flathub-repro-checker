@@ -377,7 +377,9 @@ def build_flatpak(manifest_path: str) -> bool:
             src = os.path.join(sources_manifest_dir, item)
             dest = os.path.join(manifest_dir, item)
 
-            if os.path.isfile(src) and item.lower().endswith((".json", ".yml", ".yaml")):
+            if os.path.isfile(src) and item.endswith(
+                (f"{flatpak_id}.json", f"{flatpak_id}.yml", f"{flatpak_id}.yaml")
+            ):
                 continue
 
             if os.path.isdir(src):
