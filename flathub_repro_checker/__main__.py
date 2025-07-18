@@ -580,6 +580,9 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
         return run_diffoscope(install_dir, rebuilt_dir, output_dir)
 
     finally:
+        for ref in get_pinned_refs(flatpak_id):
+            flatpak_mask(ref, remove=True)
+
         app_info_subdir = "app-info"
 
         if backup_install_manifest and install_manifest and os.path.exists(backup_install_manifest):
