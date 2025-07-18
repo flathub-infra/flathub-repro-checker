@@ -223,12 +223,19 @@ def save_manifest(flatpak_id: str) -> bool:
 
 
 def parse_manifest(flatpak_id: str) -> dict[str, Any]:
-    manifest: dict[str, Any] = {}
     path = get_saved_manifest_path(flatpak_id)
     if path:
         with open(path, encoding="utf-8") as f:
-            manifest = json.load(f)
-    return manifest
+            manifest: dict[str, Any] = json.load(f)
+            manifest_id = manifest.get("id") or manifest.get("app-id")
+            if manifest_id == flatpak_id:
+                return manifest
+            logging.error(
+                "The 'id' in manifest '%s' does not match the expected id '%s'",
+                manifest_id,
+                flatpak_id,
+            )
+    return {}
 
 
 def get_runtime_ref(flatpak_id: str) -> list[str]:
