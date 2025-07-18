@@ -541,7 +541,7 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
     backup_dir = None
     backup_install_app_info_dir = None
     backup_rebuilt_app_info_dir = None
-    installed = False
+    handled_build_deps = False
 
     try:
         if not validate_env():
@@ -549,13 +549,14 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
 
         if not setup_flathub():
             return False
-        installed = install_flatpak(f"app/{flatpak_id}//stable")
-        if not installed:
+        if not install_flatpak(f"app/{flatpak_id}//stable"):
             return False
         if not save_manifest(flatpak_id):
             return False
         if not handle_build_deps(flatpak_id):
             return False
+
+        handled_build_deps = True
 
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
@@ -615,7 +616,7 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
         return run_diffoscope(install_dir, rebuilt_dir, output_dir)
 
     finally:
-        if installed:
+        if handled_build_deps:
             for ref in get_pinned_refs(flatpak_id):
                 flatpak_mask(ref, remove=True)
 
