@@ -25,6 +25,8 @@ jobs:
           - os: ubuntu-22.04-arm
             platform: arm64
     runs-on: ${{matrix.os}}
+    env:
+      ARTIFACT_SUFFIX: ${{ matrix.platform }}-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
     permissions:
       contents: read
     timeout-minutes: 240
@@ -80,29 +82,16 @@ jobs:
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-io.github.lo2dev.Echo-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
+          name: diffoscope-io.github.lo2dev.Echo-${{ env.ARTIFACT_SUFFIX }}
           path: ./diffoscope_result-io.github.lo2dev.Echo
 
-      - name: Run check on org.signal.Signal
+      - name: Run check on page.kramo.Sly
         continue-on-error: true
-        if: ${{ matrix.platform == 'amd64' }}
-        run: uv run flathub-repro-checker --appid org.signal.Signal
+        run: uv run flathub-repro-checker --appid page.kramo.Sly
 
-      - name: Upload result of org.signal.Signal
-        if: ${{ matrix.platform == 'amd64' }}
+      - name: Upload result of page.kramo.Sly
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-org.signal.Signal-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
-          path: ./diffoscope_result-org.signal.Signal
-
-      - name: Run check on de.klayout.KLayout
-        continue-on-error: true
-        run: uv run flathub-repro-checker --appid de.klayout.KLayout
-
-      - name: Upload result of de.klayout.KLayout
-        # 4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: diffoscope-de.klayout.KLayout-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
-          path: ./diffoscope_result-de.klayout.KLayout
+          name: diffoscope-page.kramo.Sly-${{ env.ARTIFACT_SUFFIX }}
+          path: ./diffoscope_result-page.kramo.Sly
