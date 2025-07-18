@@ -80,7 +80,7 @@ jobs:
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-io.github.lo2dev.Echo
+          name: diffoscope-io.github.lo2dev.Echo-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
           path: ./diffoscope_result-io.github.lo2dev.Echo
 
       - name: Run check on org.signal.Signal
@@ -93,7 +93,7 @@ jobs:
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-org.signal.Signal
+          name: diffoscope-org.signal.Signal-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
           path: ./diffoscope_result-org.signal.Signal
 
       - name: Run check on de.klayout.KLayout
@@ -104,5 +104,5 @@ jobs:
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-de.klayout.KLayout
+          name: diffoscope-de.klayout.KLayout-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
           path: ./diffoscope_result-de.klayout.KLayout
