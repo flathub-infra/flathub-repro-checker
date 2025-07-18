@@ -390,6 +390,10 @@ def build_flatpak(manifest_path: str) -> bool:
         FLATPAK_ROOT_DIR, "runtime", sources_ext, "x86_64", "stable", "active", "files"
     )
     sources_manifest_dir = os.path.join(sources_dir, "manifest")
+    sources_downloads_dir = os.path.join(sources_dir, "downloads")
+
+    state_dir_downloads = os.path.join(state_dir, "downloads")
+    os.makedirs(state_dir_downloads, exist_ok=True)
 
     if os.path.isdir(sources_manifest_dir):
         for item in os.listdir(sources_manifest_dir):
@@ -405,6 +409,15 @@ def build_flatpak(manifest_path: str) -> bool:
                 if os.path.exists(dest):
                     shutil.rmtree(dest)
                 shutil.copytree(src, dest)
+            else:
+                shutil.copy2(src, dest)
+
+    if os.path.isdir(sources_downloads_dir):
+        for item in os.listdir(sources_downloads_dir):
+            src = os.path.join(sources_downloads_dir, item)
+            dest = os.path.join(state_dir_downloads, item)
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, dirs_exist_ok=True)
             else:
                 shutil.copy2(src, dest)
 
