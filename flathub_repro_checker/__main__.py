@@ -368,7 +368,7 @@ def build_flatpak(manifest_path: str) -> bool:
 
     sources_ext = f"{flatpak_id}.Sources"
     sources_dir = os.path.join(
-        FLATPAK_ROOT_DIR, "runtime", sources_ext, arch, "stable", "active", "files"
+        FLATPAK_ROOT_DIR, "runtime", sources_ext, "x86_64", "stable", "active", "files"
     )
     sources_manifest_dir = os.path.join(sources_dir, "manifest")
 
