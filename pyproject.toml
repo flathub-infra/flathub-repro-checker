@@ -19,9 +19,7 @@ authors = [
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = "<4.0,>=3.10"
-dependencies = [
-  "diffoscope"
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/flathub-infra/flathub-repro-checker"
