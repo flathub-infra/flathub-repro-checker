@@ -528,6 +528,89 @@ def get_built_app_branch(manifest_path: str) -> str | None:
     return None
 
 
+def backup_and_remove_nondeterminism(
+    install_dir: str, rebuilt_dir: str
+) -> tuple[dict[str, str], str] | None:
+    install_manifest = os.path.join(install_dir, "manifest.json")
+    rebuilt_manifest = os.path.join(rebuilt_dir, "manifest.json")
+    install_app_info_dir = os.path.join(install_dir, "share", "app-info")
+    rebuilt_app_info_dir = os.path.join(rebuilt_dir, "share", "app-info")
+
+    backup_dir = os.path.join(REPRO_DATADIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+
+    backup_install_manifest = os.path.join(backup_dir, "install_manifest.json")
+    backup_rebuilt_manifest = os.path.join(backup_dir, "rebuilt_manifest.json")
+    backup_install_app_info_dir = os.path.join(backup_dir, "install_app_info")
+    backup_rebuilt_app_info_dir = os.path.join(backup_dir, "rebuilt_app_info")
+
+    if not os.path.isfile(install_manifest):
+        logging.error("Failed to find manifest from install directory %s", install_dir)
+        return None
+    if not os.path.isfile(rebuilt_manifest):
+        logging.error("Failed to find manifest from rebuilt directory %s", rebuilt_dir)
+        return None
+
+    shutil.move(install_manifest, backup_install_manifest)
+    shutil.move(rebuilt_manifest, backup_rebuilt_manifest)
+
+    if os.path.isdir(install_app_info_dir):
+        os.makedirs(backup_install_app_info_dir, exist_ok=True)
+        shutil.move(install_app_info_dir, os.path.join(backup_install_app_info_dir, "app-info"))
+
+    if os.path.isdir(rebuilt_app_info_dir):
+        os.makedirs(backup_rebuilt_app_info_dir, exist_ok=True)
+        shutil.move(rebuilt_app_info_dir, os.path.join(backup_rebuilt_app_info_dir, "app-info"))
+
+    return {
+        "install_manifest": install_manifest,
+        "rebuilt_manifest": rebuilt_manifest,
+        "backup_install_manifest": backup_install_manifest,
+        "backup_rebuilt_manifest": backup_rebuilt_manifest,
+        "install_app_info_dir": install_app_info_dir,
+        "rebuilt_app_info_dir": rebuilt_app_info_dir,
+        "backup_install_app_info_dir": backup_install_app_info_dir,
+        "backup_rebuilt_app_info_dir": backup_rebuilt_app_info_dir,
+    }, backup_dir
+
+
+def restore_backups(
+    flatpak_id: str,
+    handled_build_deps: bool,
+    backup_info: dict[str, str] | None,
+    backup_dir: str | None,
+) -> None:
+    if handled_build_deps:
+        for ref in get_pinned_refs(flatpak_id):
+            flatpak_mask(ref, remove=True)
+
+    if backup_info:
+        app_info_subdir = "app-info"
+
+        if os.path.exists(backup_info["backup_install_manifest"]):
+            shutil.move(backup_info["backup_install_manifest"], backup_info["install_manifest"])
+        if os.path.exists(backup_info["backup_rebuilt_manifest"]):
+            shutil.move(backup_info["backup_rebuilt_manifest"], backup_info["rebuilt_manifest"])
+
+        if os.path.exists(
+            os.path.join(backup_info["backup_install_app_info_dir"], app_info_subdir)
+        ):
+            shutil.move(
+                os.path.join(backup_info["backup_install_app_info_dir"], app_info_subdir),
+                backup_info["install_app_info_dir"],
+            )
+        if os.path.exists(
+            os.path.join(backup_info["backup_rebuilt_app_info_dir"], app_info_subdir)
+        ):
+            shutil.move(
+                os.path.join(backup_info["backup_rebuilt_app_info_dir"], app_info_subdir),
+                backup_info["rebuilt_app_info_dir"],
+            )
+
+    if backup_dir and os.path.isdir(backup_dir):
+        shutil.rmtree(backup_dir, ignore_errors=True)
+
+
 def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> bool:
     if os.path.isdir(output_dir):
         shutil.rmtree(output_dir, ignore_errors=True)
@@ -554,33 +637,9 @@ def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> bool:
     return True
 
 
-def validate_env() -> bool:
-    required_tools = (
-        "flatpak",
-        "flatpak-builder",
-        "ostree",
-        "diffoscope",
-    )
-    missing = [tool for tool in required_tools if shutil.which(tool) is None]
-
-    if missing:
-        for tool in missing:
-            logging.error("'%s' is required but was not found in PATH", tool)
-        return False
-
-    return True
-
-
-def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) -> bool:
-    backup_install_manifest = None
-    backup_rebuilt_manifest = None
-    install_app_info_dir = None
-    rebuilt_app_info_dir = None
-    install_manifest = None
-    rebuilt_manifest = None
+def run_repro_check(flatpak_id: str, output_dir: str) -> bool:
+    backup_info = None
     backup_dir = None
-    backup_install_app_info_dir = None
-    backup_rebuilt_app_info_dir = None
     handled_build_deps = False
 
     try:
@@ -601,7 +660,6 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
 
         if not handle_build_deps(flatpak_id):
             return False
-
         handled_build_deps = True
 
         if not build_flatpak(manifest_path):
@@ -622,77 +680,32 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
             FLATPAK_ROOT_DIR, "app", flatpak_id, arch, built_branch, "active", "files"
         )
 
-        install_manifest = os.path.join(install_dir, "manifest.json")
-        rebuilt_manifest = os.path.join(rebuilt_dir, "manifest.json")
-        install_app_info_dir = os.path.join(install_dir, "share", "app-info")
-        rebuilt_app_info_dir = os.path.join(rebuilt_dir, "share", "app-info")
-
-        backup_dir = os.path.join(REPRO_DATADIR, "backups")
-        os.makedirs(backup_dir, exist_ok=True)
-
-        backup_install_manifest = os.path.join(backup_dir, "install_manifest.json")
-        backup_rebuilt_manifest = os.path.join(backup_dir, "rebuilt_manifest.json")
-        backup_install_app_info_dir = os.path.join(backup_dir, "install_app_info")
-        backup_rebuilt_app_info_dir = os.path.join(backup_dir, "rebuilt_app_info")
-
-        if os.path.isfile(install_manifest):
-            shutil.move(install_manifest, backup_install_manifest)
-        else:
-            logging.error("Failed to find manifest from install directory %s", install_dir)
+        result = backup_and_remove_nondeterminism(install_dir, rebuilt_dir)
+        if result is None:
             return False
-
-        if os.path.isfile(rebuilt_manifest):
-            shutil.move(rebuilt_manifest, backup_rebuilt_manifest)
-        else:
-            logging.error("Failed to find manifest from rebuilt directory %s", rebuilt_dir)
-            return False
-
-        if os.path.isdir(install_app_info_dir):
-            os.makedirs(backup_install_app_info_dir, exist_ok=True)
-            shutil.move(install_app_info_dir, os.path.join(backup_install_app_info_dir, "app-info"))
-        if os.path.isdir(rebuilt_app_info_dir):
-            os.makedirs(backup_rebuilt_app_info_dir, exist_ok=True)
-            shutil.move(rebuilt_app_info_dir, os.path.join(backup_rebuilt_app_info_dir, "app-info"))
+        backup_info, backup_dir = result
 
         return run_diffoscope(install_dir, rebuilt_dir, output_dir)
 
     finally:
-        if handled_build_deps:
-            for ref in get_pinned_refs(flatpak_id):
-                flatpak_mask(ref, remove=True)
+        restore_backups(flatpak_id, handled_build_deps, backup_info, backup_dir)
 
-        app_info_subdir = "app-info"
 
-        if backup_install_manifest and install_manifest and os.path.exists(backup_install_manifest):
-            shutil.move(backup_install_manifest, install_manifest)
-        if backup_rebuilt_manifest and rebuilt_manifest and os.path.exists(backup_rebuilt_manifest):
-            shutil.move(backup_rebuilt_manifest, rebuilt_manifest)
+def validate_env() -> bool:
+    required_tools = (
+        "flatpak",
+        "flatpak-builder",
+        "ostree",
+        "diffoscope",
+    )
+    missing = [tool for tool in required_tools if shutil.which(tool) is None]
 
-        if (
-            backup_install_app_info_dir
-            and install_app_info_dir
-            and os.path.exists(os.path.join(backup_install_app_info_dir, app_info_subdir))
-        ):
-            shutil.move(
-                os.path.join(backup_install_app_info_dir, app_info_subdir),
-                install_app_info_dir,
-            )
+    if missing:
+        for tool in missing:
+            logging.error("'%s' is required but was not found in PATH", tool)
+        return False
 
-        if (
-            backup_rebuilt_app_info_dir
-            and rebuilt_app_info_dir
-            and os.path.exists(os.path.join(backup_rebuilt_app_info_dir, app_info_subdir))
-        ):
-            shutil.move(
-                os.path.join(backup_rebuilt_app_info_dir, app_info_subdir),
-                rebuilt_app_info_dir,
-            )
-
-        if backup_dir and os.path.isdir(backup_dir):
-            shutil.rmtree(backup_dir, ignore_errors=True)
-
-        if args.cleanup and os.path.isdir(REPRO_DATADIR):
-            shutil.rmtree(REPRO_DATADIR, ignore_errors=True)
+    return True
 
 
 def main() -> int:
@@ -738,7 +751,7 @@ def main() -> int:
             output_dir = os.path.abspath(f"./diffoscope_result-{flatpak_id}")
         os.makedirs(output_dir, exist_ok=True)
 
-        if not run_repro_check(flatpak_id, output_dir, args):
+        if not run_repro_check(flatpak_id, output_dir):
             return 1
 
         return 0
