@@ -172,8 +172,15 @@ def install_flatpak(ref: str) -> bool:
     )
 
 
-def flatpak_mask(ref: str) -> bool:
-    return _run_flatpak(["mask", "--user", ref], message=f"Failed to mask '{ref}'") is not None
+def flatpak_mask(ref: str, remove: bool = False) -> bool:
+    args = ["mask", "--user"]
+    if remove:
+        args.append("--remove")
+    args.append(ref)
+    return (
+        _run_flatpak(args, message=f"Failed to {'unmask' if remove else 'mask'} '{ref}'")
+        is not None
+    )
 
 
 def get_manifest_output_path(flatpak_id: str) -> str:
