@@ -358,12 +358,23 @@ def handle_build_deps(flatpak_id: str) -> bool:
     return all(flatpak_mask(ref) for ref in get_pinned_refs(flatpak_id))
 
 
+def create_flatpak_builder_state_dir(flatpak_id: str) -> str | None:
+    path = os.path.join(FLATPAK_BUILDER_STATE_DIR, f"flatpak_builder_state-{flatpak_id}")
+    os.makedirs(path, exist_ok=True)
+    return path if os.path.isdir(path) else None
+
+
 def build_flatpak(manifest_path: str) -> bool:
     manifest_dir = os.path.dirname(manifest_path)
     manifest_file = os.path.basename(manifest_path)
     flatpak_id = os.path.splitext(manifest_file)[0]
     arch = get_flatpak_arch()
+    state_dir = create_flatpak_builder_state_dir(flatpak_id)
     if not arch:
+        return False
+
+    # not combined as mypy complains
+    if not state_dir:
         return False
 
     sources_ext = f"{flatpak_id}.Sources"
@@ -403,7 +414,7 @@ def build_flatpak(manifest_path: str) -> bool:
         "--install",
         "--default-branch=repro",
         "--disable-rofiles-fuse",
-        f"--state-dir={FLATPAK_BUILDER_STATE_DIR}",
+        f"--state-dir={state_dir}",
         "--assumeyes",
         f"--arch={arch}",
         "builddir",
