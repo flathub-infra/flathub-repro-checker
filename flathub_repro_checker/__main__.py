@@ -97,14 +97,25 @@ def _run_command(
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.strip() if e.stderr else ""
         stdout = e.stdout.strip() if e.stdout else ""
-        stdout_lines = "\n".join(stdout.splitlines()[-30:]) if stdout else ""
+        stdout_lines = stdout.splitlines()[-100:] if stdout else []
         if stdout_lines:
-            logging.error("Last lines of stdout:\n%s", stdout_lines)
+            keywords = re.compile(
+                r"^(error|fail|failed|failure|abort|aborted|fatal)", re.IGNORECASE
+            )
+            important = [line.strip() for line in stdout_lines if keywords.match(line.strip())]
+            if important:
+                for line in important:
+                    logging.error("%s", line)
         log_func = logging.warning if warn else logging.error
         if message:
-            log_func("%s: %s", message, stderr)
-        else:
+            if stderr:
+                log_func("%s: %s", message, stderr)
+            else:
+                log_func("%s", message)
+        elif stderr:
             logging.error("Command failed: %s\nError: %s", " ".join(command), stderr)
+        else:
+            logging.error("Command failed: %s", " ".join(command))
         return None
 
 
@@ -166,7 +177,7 @@ def install_flatpak(ref: str) -> bool:
     return (
         _run_flatpak(
             ["install", "--assumeyes", "--noninteractive", "--user", "--or-update", "flathub", ref],
-            message=f"Failed to install or update {ref}",
+            message=f"Failed to install or update '{ref}'",
         )
         is not None
     )
@@ -202,7 +213,7 @@ def save_manifest(flatpak_id: str) -> bool:
     result = _run_flatpak(
         ["run", "--command=/usr/bin/cat", ref, "/app/manifest.json"],
         capture_output=True,
-        message=f"Failed to extract manifest from {ref}",
+        message=f"Failed to extract manifest from '{ref}'",
     )
     if result is None:
         return False
@@ -306,7 +317,7 @@ def get_sources_ref(flatpak_id: str) -> list[str]:
     if is_ref_in_remote(sources_ref_str):
         sources_ref = [sources_ref_str]
     else:
-        logging.warning("Failed to find sources extension for %s", flatpak_id)
+        logging.warning("Failed to find sources extension for '%s'", flatpak_id)
     return sources_ref
 
 
@@ -351,7 +362,7 @@ def update_refs_to_pinned_commit(flatpak_id: str) -> bool:
                 f"--commit={commit}",
                 ref,
             ],
-            message=f"Failed to pin {ref} to commit {commit}",
+            message=f"Failed to pin '{ref}' to commit '{commit}'",
         )
         if result is None:
             success = False
@@ -448,7 +459,7 @@ def build_flatpak(manifest_path: str) -> bool:
     result = _run_command(
         args,
         cwd=manifest_dir,
-        message=f"Failed to run flatpak-builder on {manifest_file}",
+        message=f"Failed to run flatpak-builder on '{manifest_file}'",
         env=env,
         capture_output=True,
     )
@@ -461,7 +472,7 @@ def get_built_app_branch(manifest_path: str) -> str | None:
     result = _run_command(
         ["ostree", f"--repo={repo_path}", "refs"],
         capture_output=True,
-        message=f"Failed to list refs in {repo_path}",
+        message=f"Failed to list refs in '{repo_path}'",
     )
 
     if result is None:
@@ -513,7 +524,7 @@ def validate_env() -> bool:
 
     if missing:
         for tool in missing:
-            logging.error("%s is required but was not found in PATH", tool)
+            logging.error("'%s' is required but was not found in PATH", tool)
         return False
 
     return True
@@ -547,7 +558,7 @@ def run_repro_check(flatpak_id: str, output_dir: str, args: argparse.Namespace) 
 
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
-            logging.error("Manifest path not found")
+            logging.error("Flatpak manifest not found")
             return False
 
         if not build_flatpak(manifest_path):
@@ -675,7 +686,7 @@ def main() -> int:
         flatpak_id = args.flatpak_id
 
         if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
-            logging.error("Running the checker against %s is unsupported right now", flatpak_id)
+            logging.error("Running the checker against '%s' is unsupported right now", flatpak_id)
             return 1
 
         if args.output_dir:
