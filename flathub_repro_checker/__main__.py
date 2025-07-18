@@ -710,7 +710,7 @@ def validate_env() -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Flathub reproducibility checker")
-    parser.add_argument("--appid", required=True, help="App ID on Flathub")
+    parser.add_argument("--appid", help="App ID on Flathub")
     parser.add_argument(
         "--output-dir",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
@@ -727,6 +727,18 @@ def main() -> int:
         help="",
     )
     args = parser.parse_args()
+
+    if args.cleanup:
+        if os.path.isdir(REPRO_DATADIR):
+            logging.info("Cleaning up %s", REPRO_DATADIR)
+            shutil.rmtree(REPRO_DATADIR)
+        else:
+            logging.info("Nothing to clean in %s", REPRO_DATADIR)
+        return 0
+
+    if not args.appid:
+        logging.error("--appid is required")
+        return 1
 
     UNSUPPORTED_FLATPAK_IDS = (
         "org.mozilla.firefox",
