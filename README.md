@@ -35,15 +35,37 @@ pip install --user git+https://github.com/flathub-infra/flathub-repro-checker.gi
 flathub-repro-checker --flatpak-id $FLATPAK_ID
 ```
 
+```
+usage: flathub-repro-checker [-h] --flatpak-id FLATPAK_ID [--output-dir OUTPUT_DIR] [--cleanup] [--version]
+
+Flathub reproducibility checker
+
+options:
+  -h, --help            show this help message and exit
+  --flatpak-id FLATPAK_ID
+                        Flatpak ID on Flathub stable repo
+  --output-dir OUTPUT_DIR
+                        Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
+  --cleanup             Cleanup all state
+  --version
+```
+
 ### View the result
 
 A folder named by `diffoscope_result-$FLATPAK_ID` is created
 in the current working directory by default if the result is not
-reproducible. To view the HTML report run (replace
-`diffoscope_result-$FLATPAK_ID` with the actual folder):
+reproducible.
+
+To view the HTML report run:
 
 ```sh
-bash -c 'trap "kill \$!" EXIT; python3 -m http.server --directory diffoscope_result-$FLATPAK_ID & xdg-open http://localhost:8000 >/dev/null 2>&1; wait'
+python3 -m http.server 8080 -d diffoscope_result-$FLATPAK_ID
+```
+
+Then open it in browser:
+
+```sh
+xdg-open http://localhost:8080
 ```
 
 ### Development
