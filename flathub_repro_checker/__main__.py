@@ -71,6 +71,10 @@ class Lock:
         self.release()
 
 
+def is_inside_container() -> bool:
+    return any(os.path.exists(p) for p in ("/.dockerenv", "/run/.containerenv"))
+
+
 def _run_command(
     command: list[str],
     check: bool = True,
@@ -133,6 +137,9 @@ def _run_flatpak(
 ) -> CompletedProcess[str] | None:
     env = os.environ.copy()
     env["FLATPAK_USER_DIR"] = FLATPAK_ROOT_DIR
+
+    if is_inside_container():
+        env["FLATPAK_SYSTEM_HELPER_ON_SESSION"] = "foo"
 
     return _run_command(
         ["flatpak", *args],
@@ -498,6 +505,9 @@ def build_flatpak(manifest_path: str) -> bool:
 
     env = os.environ.copy()
     env["FLATPAK_USER_DIR"] = FLATPAK_ROOT_DIR
+
+    if is_inside_container():
+        env["FLATPAK_SYSTEM_HELPER_ON_SESSION"] = "foo"
 
     result = _run_command(
         args,
