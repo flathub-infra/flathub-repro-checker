@@ -22,9 +22,9 @@ REPRO_DATADIR = os.path.join(
 FLATPAK_ROOT_DIR = os.path.join(REPRO_DATADIR, "flatpak_root")
 FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 os.makedirs(REPRO_DATADIR, exist_ok=True)
-logging.info("Created data directory %s", REPRO_DATADIR)
+logging.info("Created data directory: %s", REPRO_DATADIR)
 os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
-logging.info("Created flatpak-builder state directory %s", FLATPAK_BUILDER_STATE_DIR)
+logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
 
 
 class Lock:
@@ -92,7 +92,7 @@ def _run_command(
         cmd_str = " ".join(command)
         msg = f"Running: {cmd_str}"
         if cwd:
-            msg += f" in directory {os.path.abspath(cwd)}"
+            msg += f" in directory: {os.path.abspath(cwd)}"
         logging.info("%s", msg)
 
         return subprocess.run(
@@ -794,10 +794,10 @@ def main() -> int:
 
     if args.cleanup:
         if os.path.isdir(REPRO_DATADIR):
-            logging.info("Cleaning up %s", REPRO_DATADIR)
+            logging.info("Cleaning up: %s", REPRO_DATADIR)
             shutil.rmtree(REPRO_DATADIR)
         else:
-            logging.info("Nothing to clean in %s", REPRO_DATADIR)
+            logging.info("Nothing to clean")
         return 0
 
     if not args.appid:
