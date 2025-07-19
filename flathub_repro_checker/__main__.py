@@ -18,14 +18,11 @@ from . import __version__
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 REPRO_DATADIR = os.path.join(
-    os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")), "flathub_repro_checker"
+    os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+    "flathub_repro_checker",
 )
 FLATPAK_ROOT_DIR = os.path.join(REPRO_DATADIR, "flatpak_root")
 FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
-os.makedirs(REPRO_DATADIR, exist_ok=True)
-logging.info("Created data directory: %s", REPRO_DATADIR)
-os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
-logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
 
 
 class Lock:
@@ -835,23 +832,26 @@ def main() -> int:
         "com.obsproject.Studio",
     )
 
+    flatpak_id = args.appid
+
+    if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
+        logging.error("Running the checker against '%s' is unsupported right now", flatpak_id)
+        return 1
+
+    os.makedirs(REPRO_DATADIR, exist_ok=True)
+    logging.info("Created data directory: %s", REPRO_DATADIR)
+    os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
+    logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
+
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    else:
+        output_dir = os.path.abspath(f"./diffoscope_result-{flatpak_id}")
+
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        flatpak_id = args.appid
-
-        if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
-            logging.error("Running the checker against '%s' is unsupported right now", flatpak_id)
-            return 1
-
-        if args.output_dir:
-            output_dir = os.path.abspath(args.output_dir)
-        else:
-            output_dir = os.path.abspath(f"./diffoscope_result-{flatpak_id}")
-        os.makedirs(output_dir, exist_ok=True)
-
         if not run_repro_check(flatpak_id, output_dir):
             return 1
-
         return 0
 
 
