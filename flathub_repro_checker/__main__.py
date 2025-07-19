@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import types
+from functools import lru_cache
 from subprocess import CompletedProcess
 from typing import Any, TextIO
 
@@ -156,6 +157,19 @@ def _run_flatpak(
     )
 
 
+def _invalidate_manifest_cache() -> None:
+    for fn in (
+        parse_manifest,
+        get_runtime_ref,
+        get_sdk_ref,
+        get_baseapp_ref,
+        get_sources_ref,
+        get_pinned_refs,
+    ):
+        fn.cache_clear()
+
+
+@lru_cache(maxsize=1)
 def get_flatpak_arch() -> str | None:
     ret = _run_flatpak(
         ["--default-arch"], capture_output=True, message="Failed to get Flatpak arch"
@@ -222,6 +236,7 @@ def save_manifest(flatpak_id: str) -> bool:
     output_path = get_manifest_output_path(flatpak_id)
     if os.path.exists(output_path):
         os.remove(output_path)
+        _invalidate_manifest_cache()
     ref = f"{flatpak_id}//stable"
     result = _run_flatpak(
         ["run", "--command=/usr/bin/cat", ref, "/app/manifest.json"],
@@ -232,9 +247,11 @@ def save_manifest(flatpak_id: str) -> bool:
         return False
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(result.stdout)
+    _invalidate_manifest_cache()
     return True
 
 
+@lru_cache(maxsize=1)
 def parse_manifest(flatpak_id: str) -> dict[str, Any]:
     path = get_saved_manifest_path(flatpak_id)
     if path:
@@ -269,6 +286,7 @@ def collect_src_paths(flatpak_id: str) -> list[str]:
     return walk_modules(manifest.get("modules", []))
 
 
+@lru_cache(maxsize=1)
 def get_runtime_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     if "runtime" in manifest and "runtime-version" in manifest:
@@ -277,6 +295,7 @@ def get_runtime_ref(flatpak_id: str) -> list[str]:
     return []
 
 
+@lru_cache(maxsize=1)
 def get_sdk_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     if "sdk" in manifest and "runtime-version" in manifest:
@@ -285,6 +304,7 @@ def get_sdk_ref(flatpak_id: str) -> list[str]:
     return []
 
 
+@lru_cache(maxsize=1)
 def get_baseapp_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     base = manifest.get("base")
@@ -364,6 +384,7 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
     return refs
 
 
+@lru_cache(maxsize=1)
 def get_sources_ref(flatpak_id: str) -> list[str]:
     sources_ref: list[str] = []
 
@@ -400,6 +421,7 @@ def get_build_deps_refs(flatpak_id: str) -> list[str]:
     )
 
 
+@lru_cache(maxsize=1)
 def get_pinned_refs(flatpak_id: str) -> dict[str, str]:
     manifest = parse_manifest(flatpak_id)
     refs: dict[str, str] = {}
