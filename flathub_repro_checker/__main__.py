@@ -707,13 +707,14 @@ def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> bool:
         return False
     if result.returncode == 0:
         logging.info("Result is reproducible")
-    elif result.returncode == 1:
+        if os.path.isdir(output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+        return True
+    if result.returncode == 1:
         logging.error("Result is not reproducible")
         return False
-    else:
-        logging.error("Diffoscope failed with code %d", result.returncode)
-        return False
-    return True
+    logging.error("Diffoscope failed with code %d", result.returncode)
+    return False
 
 
 def run_repro_check(flatpak_id: str, output_dir: str) -> bool:
