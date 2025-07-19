@@ -475,17 +475,21 @@ def build_flatpak(manifest_path: str) -> bool:
     if not state_dir:
         return False
 
-    sources_ext = f"{flatpak_id}.Sources"
-    sources_dir = os.path.join(
-        FLATPAK_ROOT_DIR, "runtime", sources_ext, "x86_64", "stable", "active", "files"
-    )
-    sources_manifest_dir = os.path.join(sources_dir, "manifest")
-    sources_downloads_dir = os.path.join(sources_dir, "downloads")
+    sources_dir = None
+    sources_manifest_dir = None
+    sources_downloads_dir = None
+    sources_id = [ref.split("/")[1] for ref in get_sources_ref(flatpak_id)]
+    if sources_id:
+        sources_dir = os.path.join(
+            FLATPAK_ROOT_DIR, "runtime", sources_id[0], "x86_64", "stable", "active", "files"
+        )
+        sources_manifest_dir = os.path.join(sources_dir, "manifest")
+        sources_downloads_dir = os.path.join(sources_dir, "downloads")
 
     state_dir_downloads = os.path.join(state_dir, "downloads")
     os.makedirs(state_dir_downloads, exist_ok=True)
 
-    if os.path.isdir(sources_manifest_dir):
+    if sources_manifest_dir and os.path.isdir(sources_manifest_dir):
         for item in os.listdir(sources_manifest_dir):
             src = os.path.join(sources_manifest_dir, item)
             dest = os.path.join(manifest_dir, item)
@@ -502,7 +506,7 @@ def build_flatpak(manifest_path: str) -> bool:
             else:
                 shutil.copy2(src, dest)
 
-    if os.path.isdir(sources_downloads_dir):
+    if sources_downloads_dir and os.path.isdir(sources_downloads_dir):
         for item in os.listdir(sources_downloads_dir):
             src = os.path.join(sources_downloads_dir, item)
             dest = os.path.join(state_dir_downloads, item)
