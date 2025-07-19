@@ -75,6 +75,10 @@ def is_inside_container() -> bool:
     return any(os.path.exists(p) for p in ("/.dockerenv", "/run/.containerenv"))
 
 
+def is_root() -> bool:
+    return os.geteuid() == 0
+
+
 def _run_command(
     command: list[str],
     check: bool = True,
@@ -721,6 +725,10 @@ def validate_env() -> bool:
 
 
 def main() -> int:
+    if is_root():
+        logging.error("Running the checker as root is unsupported")
+        return 1
+
     parser = argparse.ArgumentParser(description="Flathub reproducibility checker")
     parser.add_argument("--appid", help="App ID on Flathub")
     parser.add_argument(
