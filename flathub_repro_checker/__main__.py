@@ -366,12 +366,19 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
 
 def get_sources_ref(flatpak_id: str) -> list[str]:
     sources_ref: list[str] = []
-    sources_ref_parts = ("runtime", f"{flatpak_id}.Sources", "x86_64", "stable")
+
+    parts = flatpak_id.split(".")
+    if parts:
+        parts[-1] = parts[-1].replace("-", "_")
+    sources_id = ".".join(parts) + ".Sources"
+    sources_ref_parts = ("runtime", sources_id, "x86_64", "stable")
     sources_ref_str = "/".join(sources_ref_parts)
+
     if is_ref_in_remote(*sources_ref_parts):
         sources_ref = [sources_ref_str]
     else:
         logging.warning("Failed to find sources extension for '%s'", flatpak_id)
+
     return sources_ref
 
 
