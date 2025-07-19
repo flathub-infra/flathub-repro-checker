@@ -251,6 +251,24 @@ def parse_manifest(flatpak_id: str) -> dict[str, Any]:
     return {}
 
 
+def collect_src_paths(flatpak_id: str) -> list[str]:
+    def walk_modules(modules: list[dict[str, Any]]) -> list[str]:
+        paths: list[str] = []
+        for module in modules:
+            for source in module.get("sources", []):
+                if "path" in source and "/" not in source["path"].lstrip("./"):
+                    paths.append(os.path.basename(source["path"]))
+                if "paths" in source:
+                    paths.extend(
+                        os.path.basename(p) for p in source["paths"] if "/" not in p.lstrip("./")
+                    )
+            paths.extend(walk_modules(module.get("modules", [])))
+        return paths
+
+    manifest = parse_manifest(flatpak_id)
+    return walk_modules(manifest.get("modules", []))
+
+
 def get_runtime_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     if "runtime" in manifest and "runtime-version" in manifest:
@@ -485,6 +503,21 @@ def build_flatpak(manifest_path: str) -> bool:
                 shutil.copytree(src, dest, dirs_exist_ok=True)
             else:
                 shutil.copy2(src, dest)
+
+    src_paths = collect_src_paths(flatpak_id)
+
+    for path in src_paths:
+        target = os.path.join(manifest_dir, path)
+        if os.path.exists(target):
+            continue
+
+        basename = os.path.basename(path)
+
+        for root, _, files in os.walk(manifest_dir):
+            if basename in files:
+                source = os.path.join(root, basename)
+                shutil.copy2(source, target)
+                break
 
     args = [
         "flatpak-builder",
