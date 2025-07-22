@@ -871,6 +871,15 @@ def main() -> int:
       }
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
+        usage=argparse.SUPPRESS,
+    )
+    parser.add_argument("-h", "--help", action="help", help="Show this help message and exit")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show the version and exit",
     )
     parser.add_argument("--appid", metavar="", help="App ID on Flathub")
     parser.add_argument(
@@ -880,18 +889,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--output-dir",
+        metavar="",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
     )
     parser.add_argument(
         "--cleanup",
         action="store_true",
         help="Cleanup all state",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
-        help="",
     )
     args = parser.parse_args()
 
