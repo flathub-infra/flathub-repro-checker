@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import datetime
 import errno
 import fcntl
 import json
@@ -8,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import types
 from functools import lru_cache
 from subprocess import CompletedProcess
@@ -24,7 +26,13 @@ ALLOWED_RUNTIMES = (
     "org.kde.Sdk",
 )
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+def setup_logging(json_mode: bool = False) -> None:
+    if json_mode:
+        logging.disable(logging.CRITICAL)
+    else:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
 
 REPRO_DATADIR = os.path.join(
     os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
@@ -32,6 +40,24 @@ REPRO_DATADIR = os.path.join(
 )
 FLATPAK_ROOT_DIR = os.path.join(REPRO_DATADIR, "flatpak_root")
 FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
+
+
+def print_json_output(appid: str, status_code: int, msg: str) -> None:
+    timestamp = str(datetime.datetime.now(datetime.timezone.utc).isoformat())
+
+    if status_code not in (0, 1, 42):
+        print(f"Unknown status code: {status_code}", file=sys.stderr)  # noqa: T201
+        sys.exit(1)
+
+    ret: dict[str, str] = {
+        "timestamp": timestamp,
+        "appid": appid,
+        "status_code": str(status_code),
+        "message": msg,
+    }
+
+    print(json.dumps(ret, indent=4))  # noqa: T201
+    sys.exit(0)
 
 
 class Lock:
@@ -805,12 +831,53 @@ def validate_env() -> bool:
 
 
 def main() -> int:
-    if is_root():
-        logging.error("Running the checker as root is unsupported")
-        return 1
+    parser = argparse.ArgumentParser(description="Flathub reproducibility checker", add_help=False)
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output. Always exits with exits with 0 unless fatal errors",
+    )
+    early_args, _ = parser.parse_known_args()
+    json_mode = early_args.json
 
-    parser = argparse.ArgumentParser(description="Flathub reproducibility checker")
-    parser.add_argument("--appid", help="App ID on Flathub")
+    setup_logging(json_mode)
+
+    if is_root():
+        msg = "Running the checker as root is unsupported"
+        if json_mode:
+            print_json_output("", 1, msg)
+        else:
+            logging.error("Running the checker as root is unsupported")
+            return 1
+
+    parser = argparse.ArgumentParser(
+        description="Flathub reproducibility checker",
+        epilog="""
+    STATUS CODES:
+      0   Success
+      42  Unreproducible
+      1   Failure
+
+    JSON OUTPUT FORMAT:
+
+    Always exits with 0 unless fatal errors. All values are
+    strings. "appid" "message" can be empty strings.
+
+      {
+        "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
+        "appid": "com.example.baz",                      // App ID
+        "status_code": "1",                              // Status Code
+        "message": "Unreproducible"                      // Message
+      }
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--appid", metavar="", help="App ID on Flathub")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="JSON output. Always exits with 0 unless fatal errors",
+    )
     parser.add_argument(
         "--output-dir",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
@@ -829,15 +896,27 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cleanup:
+        msg = f"Cleaning up: {REPRO_DATADIR}"
         if os.path.isdir(REPRO_DATADIR):
-            logging.info("Cleaning up: %s", REPRO_DATADIR)
             shutil.rmtree(REPRO_DATADIR)
+            if json_mode:
+                print_json_output("", 0, msg)
+            else:
+                logging.info("Cleaning up: %s", REPRO_DATADIR)
         else:
-            logging.info("Nothing to clean")
+            msg = "Nothing to clean"
+            if json_mode:
+                print_json_output("", 0, msg)
+            else:
+                logging.info("Nothing to clean")
         return 0
 
     if not args.appid:
-        logging.error("--appid is required")
+        msg = "--appid is required"
+        if json_mode:
+            print_json_output("", 1, msg)
+        else:
+            logging.error("--appid is required")
         return 1
 
     UNSUPPORTED_FLATPAK_IDS = (
@@ -852,13 +931,19 @@ def main() -> int:
     flatpak_id = args.appid
 
     if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
-        logging.error("Running the checker against '%s' is unsupported right now", flatpak_id)
+        msg = f"Running the checker against '{flatpak_id}' is unsupported right now"
+        if json_mode:
+            print_json_output(flatpak_id, 1, msg)
+        else:
+            logging.error(msg)
         return 1
 
     os.makedirs(REPRO_DATADIR, exist_ok=True)
-    logging.info("Created data directory: %s", REPRO_DATADIR)
+    if not json_mode:
+        logging.info("Created data directory: %s", REPRO_DATADIR)
     os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
-    logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
+    if not json_mode:
+        logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
 
     if args.output_dir:
         output_dir = os.path.abspath(args.output_dir)
@@ -867,7 +952,16 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        return run_repro_check(flatpak_id, output_dir)
+        result = run_repro_check(flatpak_id, output_dir)
+        if json_mode:
+            if result == 0:
+                msg = "Success"
+            elif result == 42:
+                msg = "Unreproducible"
+            else:
+                msg = "Failure"
+            print_json_output(flatpak_id, result, msg)
+        return result
 
 
 if __name__ == "__main__":
