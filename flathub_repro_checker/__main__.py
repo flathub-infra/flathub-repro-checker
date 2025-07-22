@@ -890,6 +890,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Flathub reproducibility checker",
         epilog="""
+    This tool only works on "app" Flatpak refs for now and any other ref
+    will return an exit code of 1.
+
+    This uses a custom Flatpak root directory. Set the FLATPAK_USER_DIR
+    environment variable to override that.
+
     STATUS CODES:
       0   Success
       42  Unreproducible
