@@ -45,6 +45,19 @@ FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 def print_json_output(appid: str, status_code: int, msg: str) -> None:
     timestamp = str(datetime.datetime.now(datetime.timezone.utc).isoformat())
 
+    gh_server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    gh_repo = os.environ.get("GITHUB_REPOSITORY")
+    gh_run_id = os.environ.get("GITHUB_RUN_ID")
+
+    gl_pipeline_url = os.environ.get("CI_PIPELINE_URL")
+
+    if gh_repo and gh_run_id:
+        log_url = f"{gh_server_url}/{gh_repo}/actions/runs/{gh_run_id}"
+    elif gl_pipeline_url:
+        log_url = str(gl_pipeline_url)
+    else:
+        log_url = ""
+
     if status_code not in (0, 1, 42):
         print(f"Unknown status code: {status_code}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
@@ -53,6 +66,7 @@ def print_json_output(appid: str, status_code: int, msg: str) -> None:
         "timestamp": timestamp,
         "appid": appid,
         "status_code": str(status_code),
+        "log_url": log_url,
         "message": msg,
     }
 
@@ -884,12 +898,14 @@ def main() -> int:
     JSON OUTPUT FORMAT:
 
     Always exits with 0 unless fatal errors. All values are
-    strings. "appid" "message" can be empty strings.
+    strings. "appid", "message", "log_url" can be empty
+    strings.
 
       {
         "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
         "appid": "com.example.baz",                      // App ID
         "status_code": "42",                             // Status Code
+        "log_url": "https://example.com",                // Log URL
         "message": "Unreproducible"                      // Message
       }
         """,

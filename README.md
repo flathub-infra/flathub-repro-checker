@@ -55,12 +55,14 @@ options:
     JSON OUTPUT FORMAT:
 
     Always exits with 0 unless fatal errors. All values are
-    strings. "appid" "message" can be empty strings.
+    strings. "appid", "message", "log_url" can be empty
+    strings.
 
       {
         "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
         "appid": "com.example.baz",                      // App ID
         "status_code": "42",                             // Status Code
+        "log_url": "https://example.com",                // Log URL
         "message": "Unreproducible"                      // Message
       }
 ```
