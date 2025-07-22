@@ -10,12 +10,26 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import types
+import zipfile
 from functools import lru_cache
 from subprocess import CompletedProcess
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
+from urllib.parse import quote
 
 from . import __version__
+
+try:
+    import boto3
+
+    BOTO3_AVAIL = True
+except ImportError:
+    BOTO3_AVAIL = False
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client  # noqa: F401
+
 
 ALLOWED_RUNTIMES = (
     "org.freedesktop.Platform",
@@ -42,7 +56,9 @@ FLATPAK_ROOT_DIR = os.path.join(REPRO_DATADIR, "flatpak_root")
 FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 
 
-def print_json_output(appid: str, status_code: int, msg: str) -> None:
+def print_json_output(
+    appid: str, status_code: int, msg: str, result_url: str | None = None
+) -> None:
     timestamp = str(datetime.datetime.now(datetime.timezone.utc).isoformat())
 
     gh_server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
@@ -62,11 +78,15 @@ def print_json_output(appid: str, status_code: int, msg: str) -> None:
         print(f"Unknown status code: {status_code}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
+    if result_url is None:
+        result_url = ""
+
     ret: dict[str, str] = {
         "timestamp": timestamp,
         "appid": appid,
         "status_code": str(status_code),
         "log_url": log_url,
+        "result_url": result_url,
         "message": msg,
     }
 
@@ -124,6 +144,36 @@ def is_inside_container() -> bool:
 
 def is_root() -> bool:
     return os.geteuid() == 0
+
+
+def upload_to_s3(path: str) -> str:
+    url = ""
+
+    if not os.environ.get("BOTO3_AVAIL"):
+        logging.error("Failed to import boto3")
+        return url
+
+    if not os.path.isfile(path):
+        logging.error("The file to upload does not exist: %s", path)
+        return url
+
+    bucket_name = os.environ.get("AWS_S3_BUCKET_NAME")
+    if not bucket_name:
+        logging.error("No AWS S3 bucket name is set. Use AWS_S3_BUCKET_NAME environment variable")
+        return url
+
+    aws_region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    s3 = boto3.client("s3", region_name=aws_region)
+    object_key = os.path.basename(path)
+    try:
+        s3.upload_file(path, bucket_name, object_key, ExtraArgs={"ACL": "public-read"})
+        if aws_region != "us-east-1":
+            url = f"https://{bucket_name}.s3.{aws_region}.amazonaws.com/{quote(object_key)}"
+        else:
+            url = f"https://{bucket_name}.s3.amazonaws.com/{quote(object_key)}"
+    except Exception as err:
+        logging.error("Failed to upload file: %s", str(err))
+    return url
 
 
 def _run_command(
@@ -761,7 +811,24 @@ def restore_backups(
         shutil.rmtree(backup_dir, ignore_errors=True)
 
 
-def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> int:
+def zip_directory(dir_path: str) -> str | None:
+    if not os.path.isdir(dir_path):
+        return None
+    zip_path = os.path.join(tempfile.gettempdir(), f"{os.path.basename(dir_path)}.zip")
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, _dirs, files in os.walk(dir_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, dir_path)
+                zipf.write(file_path, arcname)
+    logging.info("Created zip file: %s", zip_path)
+    return zip_path
+
+
+def run_diffoscope(
+    folder_a: str, folder_b: str, output_dir: str, upload_results: bool = False
+) -> tuple[str | None, int]:
+    ret = (None, 1)
     if os.path.isdir(output_dir):
         shutil.rmtree(output_dir, ignore_errors=True)
     cmd = [
@@ -775,62 +842,76 @@ def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> int:
         cmd, check=False, capture_output=True, message="Diffoscope failed", warn=True
     )
     if result is None:
-        return 1
+        return ret
     if result.returncode == 0:
         logging.info("Result is reproducible")
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        return 0
+        return ret
     if result.returncode == 1:
         logging.error("Result is not reproducible")
-        return 42
+        if upload_results and os.path.exists(output_dir):
+            zip_path = zip_directory(output_dir)
+            if zip_path:
+                url = upload_to_s3(zip_path)
+                if url:
+                    logging.info("Results uploaded to: %s", url)
+                    return (url, 42)
+                logging.error("Failed to upload results")
+            else:
+                logging.error("Failed to create zip file")
+        return (None, 42)
     logging.error("Diffoscope failed with code %d", result.returncode)
-    return 1
+    return ret
 
 
-def run_repro_check(flatpak_id: str, output_dir: str, build_src: str | None) -> int:
+def run_repro_check(
+    flatpak_id: str, output_dir: str, build_src: str | None, upload_results: bool = False
+) -> tuple[str | None, int]:
     backup_info = None
     backup_dir = None
     handled_build_deps = False
     appref = f"app/{flatpak_id}//stable"
 
+    ret = (None, 1)
+
     try:
         if not validate_env():
-            return 1
+            return ret
         if not setup_flathub():
-            return 1
+            return ret
         if build_src and not install_flatpak(appref, build_src):
-            return 1
+            return ret
         if not (build_src or install_flatpak(appref)):
-            return 1
+            return ret
         src_ref = get_sources_ref(flatpak_id)
         if not src_ref:
-            return 1
+            return ret
         if build_src and not install_flatpak(src_ref[0], build_src):
-            return 1
+            return ret
         if not (build_src or install_flatpak(src_ref[0])):
-            return 1
+            return ret
         if not save_manifest(flatpak_id):
-            return 1
+            return ret
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
             logging.error("Flatpak manifest not found")
-            return 1
+            return ret
 
         if not handle_build_deps(flatpak_id):
-            return 1
+            return ret
         handled_build_deps = True
 
         if not build_flatpak(manifest_path):
-            return 1
+            return ret
 
         arch = get_flatpak_arch()
         if not arch:
-            return 1
+            return ret
 
         built_branch = get_built_app_branch(manifest_path)
         if not built_branch:
-            return 1
+            return ret
 
         install_dir = os.path.join(
             FLATPAK_ROOT_DIR, "app", flatpak_id, arch, "stable", "active", "files"
@@ -841,10 +922,10 @@ def run_repro_check(flatpak_id: str, output_dir: str, build_src: str | None) -> 
 
         result = backup_and_remove_nondeterminism(install_dir, rebuilt_dir)
         if result is None:
-            return 1
+            return ret
         backup_info, backup_dir = result
 
-        return run_diffoscope(install_dir, rebuilt_dir, output_dir)
+        return run_diffoscope(install_dir, rebuilt_dir, output_dir, upload_results)
 
     finally:
         restore_backups(flatpak_id, handled_build_deps, backup_info, backup_dir)
@@ -904,14 +985,15 @@ def main() -> int:
     JSON OUTPUT FORMAT:
 
     Always exits with 0 unless fatal errors. All values are
-    strings. "appid", "message", "log_url" can be empty
-    strings.
+    strings. "appid", "message", "log_url", "result_url" can
+    be empty strings.
 
       {
         "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
         "appid": "com.example.baz",                      // App ID
         "status_code": "42",                             // Status Code
         "log_url": "https://example.com",                // Log URL
+        "result_url": "https://example.com",             // Link to uploaded diffoscope result
         "message": "Unreproducible"                      // Message
       }
         """,
@@ -941,6 +1023,15 @@ def main() -> int:
         "--output-dir",
         metavar="",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
+    )
+    parser.add_argument(
+        "--upload-result",
+        action="store_true",
+        help=(
+            "Upload results to AWS S3. "
+            "Requires boto3. "
+            "Use AWS_S3_BUCKET_NAME to specify bucket name"
+        ),
     )
     parser.add_argument(
         "--cleanup",
@@ -1019,7 +1110,9 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        result = run_repro_check(flatpak_id, output_dir, ref_build_source)
+        upload_url, result = run_repro_check(
+            flatpak_id, output_dir, ref_build_source, args.upload_result
+        )
         if json_mode:
             if result == 0:
                 msg = "Success"
@@ -1027,7 +1120,7 @@ def main() -> int:
                 msg = "Unreproducible"
             else:
                 msg = "Failure"
-            print_json_output(flatpak_id, result, msg)
+            print_json_output(flatpak_id, result, msg, upload_url)
         return result
 
 

@@ -45,6 +45,7 @@ options:
   --json             JSON output. Always exits with 0 unless fatal errors
   --ref-build-path   Install the reference build from this OSTree repo path instead of Flathub
   --output-dir       Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
+  --upload-result    Upload results to AWS S3. Requires boto3. Use AWS_S3_BUCKET_NAME to specify bucket name
   --cleanup          Cleanup all state
 
     This tool only works on "app" Flatpak refs for now and any other ref
@@ -61,14 +62,15 @@ options:
     JSON OUTPUT FORMAT:
 
     Always exits with 0 unless fatal errors. All values are
-    strings. "appid", "message", "log_url" can be empty
-    strings.
+    strings. "appid", "message", "log_url", "result_url" can
+    be empty strings.
 
       {
         "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
         "appid": "com.example.baz",                      // App ID
         "status_code": "42",                             // Status Code
         "log_url": "https://example.com",                // Log URL
+        "result_url": "https://example.com",             // Link to uploaded diffoscope result
         "message": "Unreproducible"                      // Message
       }
 ```
