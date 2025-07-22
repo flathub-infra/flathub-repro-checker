@@ -31,7 +31,7 @@ wheels = [
 
 [[package]]
 name = "flathub-repro-checker"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "." }
 
 [package.dev-dependencies]
