@@ -889,7 +889,7 @@ def main() -> int:
       {
         "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
         "appid": "com.example.baz",                      // App ID
-        "status_code": "1",                              // Status Code
+        "status_code": "42",                             // Status Code
         "message": "Unreproducible"                      // Message
       }
         """,
