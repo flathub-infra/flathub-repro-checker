@@ -707,7 +707,7 @@ def restore_backups(
         shutil.rmtree(backup_dir, ignore_errors=True)
 
 
-def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> bool:
+def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> int:
     if os.path.isdir(output_dir):
         shutil.rmtree(output_dir, ignore_errors=True)
     cmd = [
@@ -721,54 +721,53 @@ def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> bool:
         cmd, check=False, capture_output=True, message="Diffoscope failed", warn=True
     )
     if result is None:
-        return False
+        return 1
     if result.returncode == 0:
         logging.info("Result is reproducible")
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        return True
+        return 0
     if result.returncode == 1:
         logging.error("Result is not reproducible")
-        return False
+        return 42
     logging.error("Diffoscope failed with code %d", result.returncode)
-    return False
+    return 1
 
 
-def run_repro_check(flatpak_id: str, output_dir: str) -> bool:
+def run_repro_check(flatpak_id: str, output_dir: str) -> int:
     backup_info = None
     backup_dir = None
     handled_build_deps = False
 
     try:
         if not validate_env():
-            return False
-
+            return 1
         if not setup_flathub():
-            return False
+            return 1
         if not install_flatpak(f"app/{flatpak_id}//stable"):
-            return False
+            return 1
         if not save_manifest(flatpak_id):
-            return False
+            return 1
 
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
             logging.error("Flatpak manifest not found")
-            return False
+            return 1
 
         if not handle_build_deps(flatpak_id):
-            return False
+            return 1
         handled_build_deps = True
 
         if not build_flatpak(manifest_path):
-            return False
+            return 1
 
         arch = get_flatpak_arch()
         if not arch:
-            return False
+            return 1
 
         built_branch = get_built_app_branch(manifest_path)
         if not built_branch:
-            return False
+            return 1
 
         install_dir = os.path.join(
             FLATPAK_ROOT_DIR, "app", flatpak_id, arch, "stable", "active", "files"
@@ -779,7 +778,7 @@ def run_repro_check(flatpak_id: str, output_dir: str) -> bool:
 
         result = backup_and_remove_nondeterminism(install_dir, rebuilt_dir)
         if result is None:
-            return False
+            return 1
         backup_info, backup_dir = result
 
         return run_diffoscope(install_dir, rebuilt_dir, output_dir)
@@ -868,9 +867,7 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        if not run_repro_check(flatpak_id, output_dir):
-            return 1
-        return 0
+        return run_repro_check(flatpak_id, output_dir)
 
 
 if __name__ == "__main__":
