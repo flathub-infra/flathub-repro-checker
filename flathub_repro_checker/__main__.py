@@ -15,6 +15,15 @@ from typing import Any, TextIO
 
 from . import __version__
 
+ALLOWED_RUNTIMES = (
+    "org.freedesktop.Platform",
+    "org.freedesktop.Sdk",
+    "org.gnome.Platform",
+    "org.gnome.Sdk",
+    "org.kde.Platform",
+    "org.kde.Sdk",
+)
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 REPRO_DATADIR = os.path.join(
@@ -287,7 +296,10 @@ def collect_src_paths(flatpak_id: str) -> list[str]:
 def get_runtime_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     if "runtime" in manifest and "runtime-version" in manifest:
-        return [f"{manifest['runtime']}//{manifest['runtime-version']}"]
+        runtime = manifest["runtime"]
+        if runtime in ALLOWED_RUNTIMES:
+            return [f"{runtime}//{manifest['runtime-version']}"]
+        logging.warning("Unknown runtime '%s'", runtime)
     logging.error("Missing 'runtime' or 'runtime-version' in manifest for '%s'", flatpak_id)
     return []
 
@@ -296,7 +308,10 @@ def get_runtime_ref(flatpak_id: str) -> list[str]:
 def get_sdk_ref(flatpak_id: str) -> list[str]:
     manifest = parse_manifest(flatpak_id)
     if "sdk" in manifest and "runtime-version" in manifest:
-        return [f"{manifest['sdk']}//{manifest['runtime-version']}"]
+        sdk = manifest["sdk"]
+        if sdk in ALLOWED_RUNTIMES:
+            return [f"{sdk}//{manifest['runtime-version']}"]
+        logging.warning("Unknown sdk '%s'", sdk)
     logging.error("Missing 'sdk' or 'runtime-version' in manifest for '%s'", flatpak_id)
     return []
 
