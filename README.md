@@ -36,17 +36,32 @@ flathub-repro-checker --appid $FLATPAK_ID
 ```
 
 ```
-usage: flathub-repro-checker [-h] --appid APPID [--output-dir OUTPUT_DIR] [--cleanup] [--version]
-
 Flathub reproducibility checker
 
 options:
-  -h, --help            show this help message and exit
-  --appid APPID         App ID on Flathub
-  --output-dir OUTPUT_DIR
-                        Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
-  --cleanup             Cleanup all state
-  --version
+  -h, --help     Show this help message and exit
+  --version      Show the version and exit
+  --appid        App ID on Flathub
+  --json         JSON output. Always exits with 0 unless fatal errors
+  --output-dir   Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
+  --cleanup      Cleanup all state
+
+    STATUS CODES:
+      0   Success
+      42  Unreproducible
+      1   Failure
+
+    JSON OUTPUT FORMAT:
+
+    Always exits with 0 unless fatal errors. All values are
+    strings. "appid" "message" can be empty strings.
+
+      {
+        "timestamp": "2025-07-22T04:00:17.099066+00:00"  // ISO Format
+        "appid": "com.example.baz",                      // App ID
+        "status_code": "1",                              // Status Code
+        "message": "Unreproducible"                      // Message
+      }
 ```
 
 ### View the result
