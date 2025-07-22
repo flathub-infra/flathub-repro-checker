@@ -233,11 +233,26 @@ def is_ref_in_remote(ref_type: str, ref_id: str, ref_arch: str, ref_branch: str)
     )
 
 
-def install_flatpak(ref: str) -> bool:
+def install_flatpak(ref: str, repo: str | None = None) -> bool:
+    args = [
+        "install",
+        "--user",
+        "--assumeyes",
+        "--noninteractive",
+        "--reinstall",
+    ]
+
+    if repo:
+        repo_path = os.path.abspath(repo)
+        args.append(repo_path)
+    else:
+        args.append("flathub")
+
+    args.append(ref)
     return (
         _run_flatpak(
-            ["install", "--assumeyes", "--noninteractive", "--user", "--or-update", "flathub", ref],
-            message=f"Failed to install or update '{ref}'",
+            args,
+            message=f"Failed to install or reinstall '{ref}' from '{repo or 'flathub'}'",
         )
         is not None
     )
@@ -455,7 +470,6 @@ def get_build_deps_refs(flatpak_id: str) -> list[str]:
             *sdk_ref,
             *get_build_extension_refs(flatpak_id),
             *get_baseapp_ref(flatpak_id),
-            *get_sources_ref(flatpak_id),
         }
     )
 
@@ -760,21 +774,30 @@ def run_diffoscope(folder_a: str, folder_b: str, output_dir: str) -> int:
     return 1
 
 
-def run_repro_check(flatpak_id: str, output_dir: str) -> int:
+def run_repro_check(flatpak_id: str, output_dir: str, build_src: str | None) -> int:
     backup_info = None
     backup_dir = None
     handled_build_deps = False
+    appref = f"app/{flatpak_id}//stable"
 
     try:
         if not validate_env():
             return 1
         if not setup_flathub():
             return 1
-        if not install_flatpak(f"app/{flatpak_id}//stable"):
+        if build_src and not install_flatpak(appref, build_src):
+            return 1
+        if not (build_src or install_flatpak(appref)):
+            return 1
+        src_ref = get_sources_ref(flatpak_id)
+        if not src_ref:
+            return 1
+        if build_src and not install_flatpak(src_ref[0], build_src):
+            return 1
+        if not (build_src or install_flatpak(src_ref[0])):
             return 1
         if not save_manifest(flatpak_id):
             return 1
-
         manifest_path = get_saved_manifest_path(flatpak_id)
         if manifest_path is None:
             logging.error("Flatpak manifest not found")
@@ -888,6 +911,11 @@ def main() -> int:
         help="JSON output. Always exits with 0 unless fatal errors",
     )
     parser.add_argument(
+        "--ref-build-path",
+        metavar="",
+        help="Install the reference build from this OSTree repo path instead of Flathub",
+    )
+    parser.add_argument(
         "--output-dir",
         metavar="",
         help="Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)",
@@ -942,6 +970,19 @@ def main() -> int:
             logging.error(msg)
         return 1
 
+    ref_build_source = None
+    if args.ref_build_path:
+        ref_build_path = os.path.abspath(args.ref_build_path)
+        msg = f"The path does not exist: {ref_build_path}"
+        if os.path.isdir(ref_build_path):
+            ref_build_source = ref_build_path
+        if not ref_build_source:
+            if json_mode:
+                print_json_output(flatpak_id, 1, msg)
+            else:
+                logging.error(msg)
+            return 1
+
     os.makedirs(REPRO_DATADIR, exist_ok=True)
     if not json_mode:
         logging.info("Created data directory: %s", REPRO_DATADIR)
@@ -956,7 +997,7 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        result = run_repro_check(flatpak_id, output_dir)
+        result = run_repro_check(flatpak_id, output_dir, ref_build_source)
         if json_mode:
             if result == 0:
                 msg = "Success"

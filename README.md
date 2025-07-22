@@ -39,12 +39,13 @@ flathub-repro-checker --appid $FLATPAK_ID
 Flathub reproducibility checker
 
 options:
-  -h, --help     Show this help message and exit
-  --version      Show the version and exit
-  --appid        App ID on Flathub
-  --json         JSON output. Always exits with 0 unless fatal errors
-  --output-dir   Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
-  --cleanup      Cleanup all state
+  -h, --help         Show this help message and exit
+  --version          Show the version and exit
+  --appid            App ID on Flathub
+  --json             JSON output. Always exits with 0 unless fatal errors
+  --ref-build-path   Install the reference build from this OSTree repo path instead of Flathub
+  --output-dir       Output dir for diffoscope report (default: ./diffoscope_result-$FLATPAK_ID)
+  --cleanup          Cleanup all state
 
     STATUS CODES:
       0   Success
