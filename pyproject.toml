@@ -11,7 +11,7 @@ exclude = ["**/__pycache__"]
 
 [project]
 name = "flathub_repro_checker"
-version = "0.1.6"
+version = "0.1.7"
 description = "A tool to rebuild Flatpak apps published on Flathub and compare reproducibility using diffoscope"
 authors = [
   {name = "bbhtt", email = "bbhtt@bbhtt.space"},
