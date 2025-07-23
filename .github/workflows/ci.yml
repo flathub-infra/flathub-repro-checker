@@ -15,18 +15,14 @@ on:
       - 'README.md'
   workflow_dispatch:
 
+env:
+  IMAGE: ghcr.io/flathub-infra/flatpak-builder-lint:unprivileged
+
 jobs:
   ci:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            platform: amd64
-          - os: ubuntu-22.04-arm
-            platform: arm64
-    runs-on: ${{matrix.os}}
+    runs-on: ubuntu-22.04
     env:
-      ARTIFACT_SUFFIX: ${{ matrix.platform }}-${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
+      ARTIFACT_SUFFIX: ${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
     permissions:
       contents: read
     timeout-minutes: 240
@@ -34,14 +30,17 @@ jobs:
       group: ci-${{ matrix.platform }}-${{ github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Enable unprivileged user namespaces
+        run: |
+          sudo aa-teardown >/dev/null 2>&1 || true
+          sudo systemctl disable --now apparmor.service >/dev/null 2>&1
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
         # 4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-
-      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
-        with:
-          python-version: "3.10"
 
       - name: Install uv
         # 5.4.0
@@ -52,15 +51,6 @@ jobs:
           cache-dependency-glob: |
             **/uv.lock
             **/pyproject.toml
-
-      - name: Set up dependencies
-        run: |
-          sudo add-apt-repository ppa:flatpak/stable
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends jq flatpak \
-            desktop-file-utils elfutils flatpak-builder curl \
-            dbus-daemon ostree
-          sudo apt-get install -y diffoscope
 
       - name: Install python dependencies
         run: uv sync -v --all-extras --all-groups --frozen
@@ -74,24 +64,41 @@ jobs:
       - name: Check python types
         run: uv run mypy .
 
-      - name: Run check on io.github.lo2dev.Echo
-        continue-on-error: true
-        run: uv run flathub-repro-checker --appid io.github.lo2dev.Echo
+      - name: Create work directory
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/reproworkdir
+          mkdir -p ${GITHUB_WORKSPACE}/reproworkdir/tmp
+          chmod -R 777 ${GITHUB_WORKSPACE}/reproworkdir
 
-      - name: Upload result of io.github.lo2dev.Echo
+      - name: Download seccomp profile
+        run: curl -s https://raw.githubusercontent.com/flathub-infra/vorarbeiter/refs/heads/main/flatpak.seccomp.json -o flatpak.seccomp.json
+
+      - name: Run checks
+        continue-on-error: true
+        run: |
+          run_check() {
+            APPID="$1"
+            docker run --rm \
+              --entrypoint="" \
+              --security-opt seccomp=./flatpak.seccomp.json \
+              --security-opt apparmor=unconfined \
+              --cap-drop all \
+              -v /proc:/host/proc \
+              -v "${GITHUB_WORKSPACE}/reproworkdir:/reproworkdir" \
+              -e TMPDIR=/reproworkdir/tmp \
+              -e GITHUB_SERVER_URL \
+              -e GITHUB_REPOSITORY \
+              -e GITHUB_RUN_ID \
+              -w /reproworkdir \
+              ${{ env.IMAGE }} \
+              flathub-repro-checker --json --appid "$APPID"
+          }
+
+          run_check com.valvesoftware.Steam
+
+      - name: Upload results
         # 4.6.2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diffoscope-io.github.lo2dev.Echo-${{ env.ARTIFACT_SUFFIX }}
-          path: ./diffoscope_result-io.github.lo2dev.Echo
-
-      - name: Run check on page.kramo.Sly
-        continue-on-error: true
-        run: uv run flathub-repro-checker --appid page.kramo.Sly
-
-      - name: Upload result of page.kramo.Sly
-        # 4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: diffoscope-page.kramo.Sly-${{ env.ARTIFACT_SUFFIX }}
-          path: ./diffoscope_result-page.kramo.Sly
+          name: diffoscope-results-${{ env.ARTIFACT_SUFFIX }}
+          path: ./reproworkdir/diffoscope_result-*
