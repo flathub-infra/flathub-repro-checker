@@ -19,9 +19,7 @@ authors = [
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = "<4.0,>=3.10"
-dependencies = [
-  "boto3>=1.39.10,<2.0.0",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/flathub-infra/flathub-repro-checker"
@@ -30,6 +28,11 @@ Issues = "https://github.com/flathub-infra/flathub-repro-checker/issues"
 
 [project.scripts]
 flathub-repro-checker = "flathub_repro_checker.__main__:main"
+
+[project.optional-dependencies]
+s3upload = [
+  "boto3>=1.39.10,<2.0.0",
+]
 
 [dependency-groups]
 dev = [

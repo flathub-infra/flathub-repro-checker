@@ -92,7 +92,9 @@ wheels = [
 name = "flathub-repro-checker"
 version = "0.1.7"
 source = { editable = "." }
-dependencies = [
+
+[package.optional-dependencies]
+s3upload = [
     { name = "boto3" },
 ]
 
@@ -105,7 +107,8 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "boto3", specifier = ">=1.39.10,<2.0.0" }]
+requires-dist = [{ name = "boto3", marker = "extra == 's3upload'", specifier = ">=1.39.10,<2.0.0" }]
+provides-extras = ["s3upload"]
 
 [package.metadata.requires-dev]
 dev = [

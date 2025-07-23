@@ -29,6 +29,9 @@ sudo dnf install flatpak flatpak-builder ostree diffoscope
 pip install --user git+https://github.com/flathub-infra/flathub-repro-checker.git@v0.1.7#egg=flathub_repro_checker
 ```
 
+[boto3](https://pypi.org/project/boto3/) is optionally used to upload
+diffoscope results as a zip file to Amazon S3 (`--upload-result`).
+
 ### Usage
 
 ```sh
