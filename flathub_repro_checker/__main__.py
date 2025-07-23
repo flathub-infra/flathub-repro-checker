@@ -847,7 +847,7 @@ def run_diffoscope(
         logging.info("Result is reproducible")
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        return ret
+        return (None, 0)
     if result.returncode == 1:
         logging.error("Result is not reproducible")
         if upload_results and os.path.exists(output_dir):
