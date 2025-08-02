@@ -14,7 +14,7 @@ name = "flathub_repro_checker"
 version = "0.1.9"
 description = "A tool to rebuild Flatpak apps published on Flathub and compare reproducibility using diffoscope"
 authors = [
-  {name = "bbhtt", email = "bbhtt@bbhtt.space"},
+  {name = "bbhtt", email = "bbhtt@bbhtt.in"},
 ]
 license = {text = "MIT"}
 readme = "README.md"
