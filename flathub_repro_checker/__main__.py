@@ -254,6 +254,26 @@ def _run_flatpak(
     )
 
 
+def configure_git_file_protocol(unset: bool) -> bool:
+    if not unset:
+        result = _run_command(
+            ["git", "config", "--global", "protocol.file.allow", "always"],
+            message="Failed to set git file protocol config",
+        )
+    else:
+        result = _run_command(
+            ["git", "config", "--global", "--unset", "protocol.file.allow"],
+            check=False,
+            message="Failed to unset git file protocol config",
+        )
+
+    if result:
+        action = "unset" if unset else "set"
+        logging.info("Successfully %s git file protocol config", action)
+        return True
+    return False
+
+
 def _invalidate_manifest_cache() -> None:
     for fn in (
         parse_manifest,
@@ -601,6 +621,109 @@ def create_flatpak_builder_state_dir(flatpak_id: str) -> str | None:
     return path if os.path.isdir(path) else None
 
 
+def fp_builder_filename_to_uri(name: str) -> str:
+    if "_" not in name:
+        return name
+    proto, rest = name.split("_", 1)
+    return proto + "://" + rest.replace("_", "/")
+
+
+def process_git_bare_repos(bare_repo_path: str, checkout_dir: str, commit: str) -> str | None:
+    if not (os.path.isdir(bare_repo_path) and commit):
+        return None
+
+    bare_repo_dir = os.path.dirname(bare_repo_path)
+    checkout_folder_name = os.path.basename(bare_repo_path) + "_checkout"
+    checkout_repo_path = os.path.join(checkout_dir, checkout_folder_name)
+
+    if (
+        _run_command(["git", "clone", bare_repo_path, checkout_repo_path], cwd=bare_repo_dir)
+        is None
+    ):
+        return None
+
+    if _run_command(["git", "checkout", "-f", commit], cwd=checkout_repo_path):
+        return checkout_repo_path
+    return None
+
+
+def find_git_src_commit(manifest_file: str, git_url: str) -> str | None:
+    if not os.path.isfile(manifest_file):
+        logging.error("Manifest file does not exist: %s", manifest_file)
+        return None
+
+    try:
+        with open(manifest_file, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as err:
+        logging.error("Failed to open manifest: %s", err)
+        return None
+
+    if "modules" in data:
+        for module in data["modules"]:
+            if "sources" in module:
+                for source in module["sources"]:
+                    if source.get("type") == "git" and source.get("url") == git_url:
+                        if "commit" in source:
+                            return str(source["commit"])
+                        logging.error("Git source found but no commit: %s", git_url)
+                        return None
+
+    logging.warn("Git url not found in manifest: %s", git_url)
+    return None
+
+
+def replace_git_sources(manifest_file: str, replace_dict: dict[str, str]) -> bool:
+    if not os.path.isfile(manifest_file):
+        logging.error("Manifest file does not exist: %s", manifest_file)
+        return False
+
+    for _, local_path in replace_dict.items():
+        if not os.path.isdir(local_path):
+            logging.error("Target git checkout does not exist: %s", local_path)
+            return False
+        if local_path.startswith("file://"):
+            logging.error("Target path must not be a file uri: %s", local_path)
+            return False
+
+    backup_file = f"{manifest_file}.backup"
+    try:
+        shutil.copy2(manifest_file, backup_file)
+        logging.info("Created backup: %s", backup_file)
+    except OSError as err:
+        logging.error("Failed to create backup of manifest file: %s", err)
+        return False
+
+    try:
+        with open(manifest_file, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as err:
+        logging.error("Failed to open manifest: %s", err)
+        return False
+
+    file_url_map: dict[str, str] = {}
+    for url, local_path in replace_dict.items():
+        file_url_map[url] = f"file://{os.path.abspath(local_path)}"
+
+    if "modules" in data:
+        for module in data["modules"]:
+            if "sources" in module:
+                for source in module["sources"]:
+                    if source.get("type") == "git" and "url" in source:
+                        old_url = source["url"]
+                        if old_url in file_url_map:
+                            source["url"] = file_url_map[old_url]
+
+    try:
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+    except OSError as err:
+        logging.error("Failed to write manifest: %s", err)
+        return False
+
+    return True
+
+
 def build_flatpak(manifest_path: str) -> bool:
     manifest_dir = os.path.dirname(manifest_path)
     manifest_file = os.path.basename(manifest_path)
@@ -617,6 +740,7 @@ def build_flatpak(manifest_path: str) -> bool:
     sources_dir = None
     sources_manifest_dir = None
     sources_downloads_dir = None
+    sources_git_dir = None
     sources_id = [ref.split("/")[1] for ref in get_sources_ref(flatpak_id)]
     if sources_id:
         sources_dir = os.path.join(
@@ -624,9 +748,29 @@ def build_flatpak(manifest_path: str) -> bool:
         )
         sources_manifest_dir = os.path.join(sources_dir, "manifest")
         sources_downloads_dir = os.path.join(sources_dir, "downloads")
+        sources_git_dir = os.path.join(sources_dir, "git")
 
     state_dir_downloads = os.path.join(state_dir, "downloads")
     os.makedirs(state_dir_downloads, exist_ok=True)
+
+    state_dir_git = os.path.join(state_dir, "git")
+    os.makedirs(state_dir_git, exist_ok=True)
+
+    replace_dict: dict[str, str] = {}
+    if sources_git_dir and os.path.isdir(sources_git_dir):
+        for item in os.listdir(sources_git_dir):
+            src = os.path.join(sources_git_dir, item)
+            dest = os.path.join(state_dir_git, item)
+            uri = fp_builder_filename_to_uri(os.path.basename(dest))
+            checkout_commit = find_git_src_commit(manifest_path, uri)
+            if checkout_commit and os.path.isdir(src):
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+                checkout_path = process_git_bare_repos(dest, manifest_dir, checkout_commit)
+                if checkout_path:
+                    replace_dict[uri] = checkout_path
+
+        if replace_dict:
+            replace_git_sources(manifest_path, replace_dict)
 
     if sources_manifest_dir and os.path.isdir(sources_manifest_dir):
         for item in os.listdir(sources_manifest_dir):
@@ -697,6 +841,8 @@ def build_flatpak(manifest_path: str) -> bool:
     if is_inside_container():
         env["FLATPAK_SYSTEM_HELPER_ON_SESSION"] = "foo"
 
+    configure_git_file_protocol(unset=False)
+
     result = _run_command(
         args,
         cwd=manifest_dir,
@@ -704,6 +850,8 @@ def build_flatpak(manifest_path: str) -> bool:
         env=env,
         capture_output=True,
     )
+
+    configure_git_file_protocol(unset=True)
 
     return result is not None
 
