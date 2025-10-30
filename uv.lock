@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <4.0"
 
 [[package]]
@@ -90,7 +90,7 @@ wheels = [
 
 [[package]]
 name = "flathub-repro-checker"
-version = "0.1.9"
+version = "0.1.10"
 source = { editable = "." }
 
 [package.optional-dependencies]
