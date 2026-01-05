@@ -149,7 +149,7 @@ def is_root() -> bool:
 def upload_to_s3(path: str) -> str:
     url = ""
 
-    if not os.environ.get("BOTO3_AVAIL"):
+    if not BOTO3_AVAIL:
         logging.error("Failed to import boto3")
         return url
 
