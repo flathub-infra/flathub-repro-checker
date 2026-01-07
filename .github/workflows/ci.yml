@@ -14,6 +14,8 @@ on:
       - 'LICENSE'
       - 'README.md'
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'
 
 env:
   IMAGE: ghcr.io/flathub-infra/flatpak-builder-lint:unprivileged
