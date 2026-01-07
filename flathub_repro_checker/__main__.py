@@ -40,6 +40,15 @@ ALLOWED_RUNTIMES = (
     "org.kde.Sdk",
 )
 
+UNSUPPORTED_FLATPAK_IDS = (
+    "org.mozilla.firefox",
+    "org.mozilla.Thunderbird",
+    "net.pcsx2.PCSX2",
+    "org.duckstation.DuckStation",
+    "net.wz2100.wz2100",
+    "com.obsproject.Studio",
+)
+
 
 def setup_logging(json_mode: bool = False) -> None:
     if json_mode:
@@ -1211,15 +1220,6 @@ def main() -> int:
         else:
             logging.error("--appid is required")
         return 1
-
-    UNSUPPORTED_FLATPAK_IDS = (
-        "org.mozilla.firefox",
-        "org.mozilla.Thunderbird",
-        "net.pcsx2.PCSX2",
-        "org.duckstation.DuckStation",
-        "net.wz2100.wz2100",
-        "com.obsproject.Studio",
-    )
 
     flatpak_id = args.appid
 
