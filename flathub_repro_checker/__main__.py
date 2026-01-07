@@ -669,7 +669,7 @@ def find_git_src_commit(manifest_file: str, git_url: str) -> str | None:
                         logging.error("Git source found but no commit: %s", git_url)
                         return None
 
-    logging.warn("Git url not found in manifest: %s", git_url)
+    logging.warning("Git url not found in manifest: %s", git_url)
     return None
 
 
