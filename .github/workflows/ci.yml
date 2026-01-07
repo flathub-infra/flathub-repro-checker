@@ -23,8 +23,6 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-22.04
-    env:
-      ARTIFACT_SUFFIX: ${{ github.sha }}-${{ github.run_id }}-${{ github.job }}-${{ github.run_attempt }}
     permissions:
       contents: read
     timeout-minutes: 240
@@ -66,41 +64,9 @@ jobs:
       - name: Check python types
         run: uv run mypy .
 
-      - name: Create work directory
+      - name: Run tests
+        run: uv run pytest -vvv
+
+      - name: Run integration tests
         run: |
-          mkdir -p ${GITHUB_WORKSPACE}/reproworkdir
-          mkdir -p ${GITHUB_WORKSPACE}/reproworkdir/tmp
-          chmod -R 777 ${GITHUB_WORKSPACE}/reproworkdir
-
-      - name: Download seccomp profile
-        run: curl -s https://raw.githubusercontent.com/flathub-infra/vorarbeiter/refs/heads/main/flatpak.seccomp.json -o flatpak.seccomp.json
-
-      - name: Run checks
-        continue-on-error: true
-        run: |
-          run_check() {
-            APPID="$1"
-            docker run --rm \
-              --entrypoint="" \
-              --security-opt seccomp=./flatpak.seccomp.json \
-              --security-opt apparmor=unconfined \
-              --cap-drop all \
-              -v /proc:/host/proc \
-              -v "${GITHUB_WORKSPACE}/reproworkdir:/reproworkdir" \
-              -e TMPDIR=/reproworkdir/tmp \
-              -e GITHUB_SERVER_URL \
-              -e GITHUB_REPOSITORY \
-              -e GITHUB_RUN_ID \
-              -w /reproworkdir \
-              ${{ env.IMAGE }} \
-              flathub-repro-checker --json --appid "$APPID"
-          }
-
-          run_check com.valvesoftware.Steam
-
-      - name: Upload results
-        # 4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: diffoscope-results-${{ env.ARTIFACT_SUFFIX }}
-          path: ./reproworkdir/diffoscope_result-*
+          uv run pytest -m integration -vvv
