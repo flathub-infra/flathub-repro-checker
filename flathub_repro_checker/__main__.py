@@ -62,6 +62,11 @@ UNSUPPORTED_FLATPAK_IDS = (
     "com.obsproject.Studio",
 )
 
+SUPPORTED_REF_ARCH = "x86_64"
+SUPPORTED_REF_BRANCH = "stable"
+RUNTIME_REF_KIND = "runtime"
+APP_REF_KIND = "app"
+
 
 def setup_logging(json_mode: bool = False) -> None:
     if json_mode:
@@ -384,7 +389,7 @@ def save_manifest(flatpak_id: str) -> bool:
     if os.path.exists(output_path):
         os.remove(output_path)
         _invalidate_manifest_cache()
-    ref = f"{flatpak_id}//stable"
+    ref = f"{flatpak_id}//{SUPPORTED_REF_BRANCH}"
     result = _run_flatpak(
         ["run", "--command=/usr/bin/cat", ref, "/app/manifest.json"],
         capture_output=True,
@@ -531,7 +536,11 @@ def get_build_extension_refs(flatpak_id: str) -> list[str]:
 
     if isinstance(add_build_exts, dict):
         for ext_id, ext_info in add_build_exts.items():
-            version = ext_info.get("version", "stable") if isinstance(ext_info, dict) else "stable"
+            version = (
+                ext_info.get("version", SUPPORTED_REF_BRANCH)
+                if isinstance(ext_info, dict)
+                else SUPPORTED_REF_BRANCH
+            )
             refs.append(f"{ext_id}//{version}")
 
     return refs
@@ -545,7 +554,7 @@ def get_sources_ref(flatpak_id: str) -> list[str]:
     if parts:
         parts[-1] = parts[-1].replace("-", "_")
     sources_id = ".".join(parts) + ".Sources"
-    sources_ref_parts = ("runtime", sources_id, "x86_64", "stable")
+    sources_ref_parts = (RUNTIME_REF_KIND, sources_id, SUPPORTED_REF_ARCH, SUPPORTED_REF_BRANCH)
     sources_ref_str = "/".join(sources_ref_parts)
 
     if is_ref_in_remote(*sources_ref_parts):
@@ -759,7 +768,13 @@ def build_flatpak(manifest_path: str) -> bool:
     sources_id = [ref.split("/")[1] for ref in get_sources_ref(flatpak_id)]
     if sources_id:
         sources_dir = os.path.join(
-            FLATPAK_ROOT_DIR, "runtime", sources_id[0], "x86_64", "stable", "active", "files"
+            FLATPAK_ROOT_DIR,
+            RUNTIME_REF_KIND,
+            sources_id[0],
+            SUPPORTED_REF_ARCH,
+            SUPPORTED_REF_BRANCH,
+            "active",
+            "files",
         )
         sources_manifest_dir = os.path.join(sources_dir, "manifest")
         sources_downloads_dir = os.path.join(sources_dir, "downloads")
@@ -1038,7 +1053,7 @@ def run_repro_check(
     backup_info = None
     backup_dir = None
     handled_build_deps = False
-    appref = f"app/{flatpak_id}//stable"
+    appref = f"{APP_REF_KIND}/{flatpak_id}//{SUPPORTED_REF_BRANCH}"
 
     ret = ReproResult(None, ExitCode.FAILURE)
 
@@ -1077,10 +1092,16 @@ def run_repro_check(
             return ret
 
         install_dir = os.path.join(
-            FLATPAK_ROOT_DIR, "app", flatpak_id, arch, "stable", "active", "files"
+            FLATPAK_ROOT_DIR,
+            APP_REF_KIND,
+            flatpak_id,
+            arch,
+            SUPPORTED_REF_BRANCH,
+            "active",
+            "files",
         )
         rebuilt_dir = os.path.join(
-            FLATPAK_ROOT_DIR, "app", flatpak_id, arch, built_branch, "active", "files"
+            FLATPAK_ROOT_DIR, APP_REF_KIND, flatpak_id, arch, built_branch, "active", "files"
         )
 
         result = backup_and_remove_nondeterminism(install_dir, rebuilt_dir)
@@ -1272,7 +1293,7 @@ def main() -> int:
             "Failed to set up Flathub remote",
         )
 
-    if not is_ref_in_remote("app", flatpak_id, "x86_64", "stable"):
+    if not is_ref_in_remote(APP_REF_KIND, flatpak_id, SUPPORTED_REF_ARCH, SUPPORTED_REF_BRANCH):
         return report_and_exit(
             json_mode,
             flatpak_id,
