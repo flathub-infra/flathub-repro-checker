@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 class ExitCode(IntEnum):
     SUCCESS = 0
     FAILURE = 1
+    UNHANDLED = 2
     UNREPRODUCIBLE = 42
 
 
@@ -1042,10 +1043,6 @@ def run_repro_check(
     ret = ReproResult(None, ExitCode.FAILURE)
 
     try:
-        if not validate_env():
-            return ret
-        if not setup_flathub():
-            return ret
         if build_src and not install_flatpak(appref, build_src):
             return ret
         if not (build_src or install_flatpak(appref)):
@@ -1148,16 +1145,17 @@ def parse_args() -> tuple[bool, argparse.Namespace]:
     parser = argparse.ArgumentParser(
         description="Flathub reproducibility checker",
         epilog="""
-    This tool only works on "app" Flatpak refs for now and any other ref
-    will return an exit code of 1.
+    This tool only works on "app" Flatpak refs on Flathub and any other
+    ref will return an exit code of 2.
 
     This uses a custom Flatpak root directory. Set the FLATPAK_USER_DIR
     environment variable to override that.
 
     STATUS CODES:
       0   Success
-      42  Unreproducible
       1   Failure
+      2   Unhandled
+      42  Unreproducible
 
     JSON OUTPUT FORMAT:
 
@@ -1248,12 +1246,38 @@ def main() -> int:
 
     flatpak_id = args.appid
 
+    if not validate_env():
+        return report_and_exit(
+            json_mode,
+            "",
+            ExitCode.FAILURE,
+            "Failed to validate the environment",
+        )
+
+    unhandled_msg = f"Running the checker against '{flatpak_id}' is unsupported right now"
+
     if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
         return report_and_exit(
             json_mode,
             flatpak_id,
+            ExitCode.UNHANDLED,
+            unhandled_msg,
+        )
+
+    if not setup_flathub():
+        return report_and_exit(
+            json_mode,
+            flatpak_id,
             ExitCode.FAILURE,
-            f"Running the checker against '{flatpak_id}' is unsupported right now",
+            "Failed to set up Flathub remote",
+        )
+
+    if not is_ref_in_remote("app", flatpak_id, "x86_64", "stable"):
+        return report_and_exit(
+            json_mode,
+            flatpak_id,
+            ExitCode.UNHANDLED,
+            unhandled_msg,
         )
 
     ref_build_source = None

@@ -365,9 +365,13 @@ class TestMain:
         assert "root is unsupported" in data["message"].lower()
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
+    @patch("flathub_repro_checker.__main__.validate_env", return_value=True)
+    @patch("flathub_repro_checker.__main__.setup_flathub", return_value=True)
     @patch("flathub_repro_checker.__main__.run_repro_check")
+    @patch("flathub_repro_checker.__main__.is_ref_in_remote", return_value=True)
     def test_unreproducible_json(
         self,
+        mock_is_ref: Mock,  # noqa: ARG002
         mock_run: Mock,
         _: Mock,
         monkeypatch: pytest.MonkeyPatch,
@@ -401,27 +405,37 @@ class TestMain:
         assert data["result_url"] == "https://example.com/diff.zip"
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
-    @pytest.mark.parametrize(
-        "argv",
-        [
-            [],
-            ["--appid", next(iter(repro.UNSUPPORTED_FLATPAK_IDS))],
-        ],
-    )
-    def test_invalid_appids_non_json(
+    @patch("flathub_repro_checker.__main__.validate_env", return_value=True)
+    def test_missing_appid_non_json(
         self,
-        _: Mock,
-        argv: list[str],
+        _validate_env: Mock,
+        _is_root: Mock,
     ) -> None:
-        code = self._run_main(argv)
+        code = self._run_main([])
         assert code == ExitCode.FAILURE
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
+    @patch("flathub_repro_checker.__main__.validate_env", return_value=True)
+    def test_unsupported_appid_non_json(
+        self,
+        _validate_env: Mock,
+        _is_root: Mock,
+    ) -> None:
+        code = self._run_main(["--appid", next(iter(repro.UNSUPPORTED_FLATPAK_IDS))])
+        assert code == ExitCode.UNHANDLED
+
+    @patch("flathub_repro_checker.__main__.is_root", return_value=False)
+    @patch("flathub_repro_checker.__main__.validate_env", return_value=True)
+    @patch("flathub_repro_checker.__main__.setup_flathub", return_value=True)
+    @patch("flathub_repro_checker.__main__.is_ref_in_remote", return_value=True)
     @patch("flathub_repro_checker.__main__.run_repro_check")
     def test_success_non_json(
         self,
         mock_run: Mock,
-        _: Mock,
+        _is_ref: Mock,
+        _setup_flathub: Mock,
+        _validate_env: Mock,
+        _is_root: Mock,
         monkeypatch: pytest.MonkeyPatch,
         temp_dir: str,
     ) -> None:
