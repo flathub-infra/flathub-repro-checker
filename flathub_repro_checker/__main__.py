@@ -1117,6 +1117,16 @@ def validate_env() -> bool:
     return True
 
 
+def json_exit(
+    appid: str,
+    code: ExitCode,
+    message: str,
+    url: str | None,
+) -> NoReturn:
+    print_json_output(appid, code, message, url)
+    raise SystemExit(0)
+
+
 def report_and_exit(
     json_mode: bool,
     appid: str,
@@ -1127,8 +1137,8 @@ def report_and_exit(
     url: str = "",
 ) -> int:
     if json_mode:
-        print_json_output(appid, code, message, url)
-        return int(ExitCode.SUCCESS)
+        json_exit(appid, code, message, url)
+
     getattr(logging, level)(message)
     return int(code)
 
@@ -1279,12 +1289,13 @@ def main() -> int:
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
         result = run_repro_check(flatpak_id, output_dir, ref_build_source, args.upload_result)
+        msg = {
+            ExitCode.SUCCESS: "Success",
+            ExitCode.UNREPRODUCIBLE: "Unreproducible",
+        }.get(result.code, "Failure")
+
         if json_mode:
-            msg = {
-                ExitCode.SUCCESS: "Success",
-                ExitCode.UNREPRODUCIBLE: "Unreproducible",
-            }.get(result.code, "Failure")
-            print_json_output(flatpak_id, result.code, msg, result.url)
+            json_exit(flatpak_id, result.code, msg, result.url)
 
         return int(result.code)
 

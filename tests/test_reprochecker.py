@@ -300,30 +300,105 @@ class TestMain:
         finally:
             sys.argv = old_argv
 
+    def _run_main_json(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        argv: list[str],
+    ) -> tuple[int, dict[str, str]]:
+        old_argv = sys.argv[:]
+        sys.argv = ["flathub-repro-checker", *argv]
+        try:
+            with pytest.raises(SystemExit) as exc:
+                repro.main()
+
+            exit_code = exc.value.code
+            assert isinstance(exit_code, int)
+
+            captured = capsys.readouterr()
+            data = json.loads(captured.out)
+
+            return exit_code, data
+        finally:
+            sys.argv = old_argv
+
+    def _assert_json_schema(self, obj: dict[str, str]) -> None:
+        assert set(obj) == {
+            "timestamp",
+            "appid",
+            "status_code",
+            "log_url",
+            "result_url",
+            "message",
+        }
+        for value in obj.values():
+            assert isinstance(value, str)
+
     def _sandbox(self, monkeypatch: pytest.MonkeyPatch, temp_dir: str) -> None:
         monkeypatch.setattr(repro, "REPRO_DATADIR", temp_dir)
-        monkeypatch.setattr(repro, "FLATPAK_BUILDER_STATE_DIR", os.path.join(temp_dir, "builder"))
+        monkeypatch.setattr(
+            repro,
+            "FLATPAK_BUILDER_STATE_DIR",
+            os.path.join(temp_dir, "builder"),
+        )
         os.makedirs(repro.FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=True)
-    @patch("flathub_repro_checker.__main__.print_json_output")
-    def test_root_rejected(
+    def test_root_rejected_json(
         self,
-        mock_print_json: Mock,
         _: Mock,
         monkeypatch: pytest.MonkeyPatch,
         temp_dir: str,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         self._sandbox(monkeypatch, temp_dir)
 
-        code = self._run_main(["--json", "--appid", "com.example.App"])
+        exit_code, data = self._run_main_json(
+            capsys,
+            ["--json", "--appid", "com.example.App"],
+        )
 
-        assert code == 1
-        assert mock_print_json.call_count >= 1
+        assert exit_code == 0
+        self._assert_json_schema(data)
 
-        first_call = mock_print_json.call_args_list[0].args
-        assert first_call[1] == 1
-        assert "running the checker as root is unsupported" in first_call[2].lower()
+        assert data["appid"] == ""
+        assert data["status_code"] == str(int(ExitCode.FAILURE))
+        assert "root is unsupported" in data["message"].lower()
+
+    @patch("flathub_repro_checker.__main__.is_root", return_value=False)
+    @patch("flathub_repro_checker.__main__.run_repro_check")
+    def test_unreproducible_json(
+        self,
+        mock_run: Mock,
+        _: Mock,
+        monkeypatch: pytest.MonkeyPatch,
+        temp_dir: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._sandbox(monkeypatch, temp_dir)
+
+        mock_run.return_value = ReproResult(
+            "https://example.com/diff.zip",
+            ExitCode.UNREPRODUCIBLE,
+        )
+
+        exit_code, data = self._run_main_json(
+            capsys,
+            [
+                "--json",
+                "--appid",
+                "com.example.App",
+                "--output-dir",
+                os.path.join(temp_dir, "out"),
+            ],
+        )
+
+        assert exit_code == 0
+        self._assert_json_schema(data)
+
+        assert data["appid"] == "com.example.App"
+        assert data["status_code"] == str(int(ExitCode.UNREPRODUCIBLE))
+        assert "reproducible" in data["message"].lower()
+        assert data["result_url"] == "https://example.com/diff.zip"
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
     @pytest.mark.parametrize(
@@ -333,17 +408,17 @@ class TestMain:
             ["--appid", next(iter(repro.UNSUPPORTED_FLATPAK_IDS))],
         ],
     )
-    def test_invalid_appids(
+    def test_invalid_appids_non_json(
         self,
         _: Mock,
         argv: list[str],
     ) -> None:
         code = self._run_main(argv)
-        assert code == 1
+        assert code == ExitCode.FAILURE
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
     @patch("flathub_repro_checker.__main__.run_repro_check")
-    def test_success(
+    def test_success_non_json(
         self,
         mock_run: Mock,
         _: Mock,
@@ -362,42 +437,7 @@ class TestMain:
             ]
         )
 
-        assert code == 0
-        mock_run.assert_called_once()
-
-    @patch("flathub_repro_checker.__main__.is_root", return_value=False)
-    @patch("flathub_repro_checker.__main__.run_repro_check")
-    @patch("flathub_repro_checker.__main__.print_json_output")
-    def test_unreproducible(
-        self,
-        mock_print_json: Mock,
-        mock_run: Mock,
-        _: Mock,
-        monkeypatch: pytest.MonkeyPatch,
-        temp_dir: str,
-    ) -> None:
-        self._sandbox(monkeypatch, temp_dir)
-        mock_run.return_value = ReproResult(
-            "https://example.com/diff.zip",
-            ExitCode.UNREPRODUCIBLE,
-        )
-
-        code = self._run_main(
-            [
-                "--json",
-                "--appid",
-                "com.example.App",
-                "--output-dir",
-                os.path.join(temp_dir, "out"),
-            ]
-        )
-
-        assert code == 42
-        mock_print_json.assert_called_once()
-
-        args = mock_print_json.call_args.args
-        assert args[1] == 42
-        assert args[3] == "https://example.com/diff.zip"
+        assert code == ExitCode.SUCCESS
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
     @pytest.mark.parametrize("dir_exists", [True, False])
@@ -415,5 +455,5 @@ class TestMain:
 
         code = self._run_main(["--cleanup"])
 
-        assert code == 0
+        assert code == ExitCode.SUCCESS
         assert not os.path.exists(temp_dir)

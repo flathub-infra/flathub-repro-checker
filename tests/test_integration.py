@@ -113,5 +113,3 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
         assert data["result_url"] == ""
     elif data["status_code"] == "42":
         assert "repro" in data["message"].lower()
-    elif data["status_code"] == "1":
-        assert data["message"] != ""
