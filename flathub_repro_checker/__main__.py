@@ -1105,25 +1105,26 @@ def validate_env() -> bool:
     return True
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Flathub reproducibility checker", add_help=False)
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print JSON output. Always exits with exits with 0 unless fatal errors",
-    )
-    early_args, _ = parser.parse_known_args()
-    json_mode = early_args.json
+def report_and_exit(
+    json_mode: bool,
+    appid: str,
+    code: int,
+    message: str,
+    *,
+    level: str = "error",
+    url: str = "",
+) -> int:
+    if json_mode:
+        print_json_output(appid, code, message, url)
+        return 0
+    getattr(logging, level)(message)
+    return code
 
-    setup_logging(json_mode)
 
-    if is_root():
-        msg = "Running the checker as root is unsupported"
-        if json_mode:
-            print_json_output("", 1, msg)
-        else:
-            logging.error("Running the checker as root is unsupported")
-            return 1
+def parse_args() -> tuple[bool, argparse.Namespace]:
+    early = argparse.ArgumentParser(add_help=False)
+    early.add_argument("--json", action="store_true")
+    early_args, _ = early.parse_known_args()
 
     parser = argparse.ArgumentParser(
         description="Flathub reproducibility checker",
@@ -1195,66 +1196,73 @@ def main() -> int:
         action="store_true",
         help="Cleanup all state",
     )
-    args = parser.parse_args()
+
+    return early_args.json, parser.parse_args()
+
+
+def main() -> int:
+    json_mode, args = parse_args()
+    setup_logging(json_mode)
+
+    if is_root():
+        return report_and_exit(
+            json_mode,
+            "",
+            1,
+            "Running the checker as root is unsupported",
+        )
 
     if args.cleanup:
-        msg = f"Cleaning up: {REPRO_DATADIR}"
         if os.path.isdir(REPRO_DATADIR):
             shutil.rmtree(REPRO_DATADIR)
-            if json_mode:
-                print_json_output("", 0, msg)
-            else:
-                logging.info("Cleaning up: %s", REPRO_DATADIR)
-        else:
-            msg = "Nothing to clean"
-            if json_mode:
-                print_json_output("", 0, msg)
-            else:
-                logging.info("Nothing to clean")
-        return 0
+            return report_and_exit(
+                json_mode,
+                "",
+                0,
+                f"Cleaning up: {REPRO_DATADIR}",
+                level="info",
+            )
+        return report_and_exit(json_mode, "", 0, "Nothing to clean", level="info")
 
     if not args.appid:
-        msg = "--appid is required"
-        if json_mode:
-            print_json_output("", 1, msg)
-        else:
-            logging.error("--appid is required")
-        return 1
+        return report_and_exit(json_mode, "", 1, "--appid is required")
 
     flatpak_id = args.appid
 
     if flatpak_id in UNSUPPORTED_FLATPAK_IDS:
-        msg = f"Running the checker against '{flatpak_id}' is unsupported right now"
-        if json_mode:
-            print_json_output(flatpak_id, 1, msg)
-        else:
-            logging.error(msg)
-        return 1
+        return report_and_exit(
+            json_mode,
+            flatpak_id,
+            1,
+            f"Running the checker against '{flatpak_id}' is unsupported right now",
+        )
 
     ref_build_source = None
     if args.ref_build_path:
         ref_build_path = os.path.abspath(args.ref_build_path)
-        msg = f"The path does not exist: {ref_build_path}"
-        if os.path.isdir(ref_build_path):
-            ref_build_source = ref_build_path
-        if not ref_build_source:
-            if json_mode:
-                print_json_output(flatpak_id, 1, msg)
-            else:
-                logging.error(msg)
-            return 1
+        if not os.path.isdir(ref_build_path):
+            return report_and_exit(
+                json_mode,
+                flatpak_id,
+                1,
+                f"The path does not exist: {ref_build_path}",
+            )
+        ref_build_source = ref_build_path
 
     os.makedirs(REPRO_DATADIR, exist_ok=True)
-    if not json_mode:
-        logging.info("Created data directory: %s", REPRO_DATADIR)
     os.makedirs(FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
     if not json_mode:
-        logging.info("Created flatpak-builder root state directory: %s", FLATPAK_BUILDER_STATE_DIR)
+        logging.info("Created data directory: %s", REPRO_DATADIR)
+        logging.info(
+            "Created flatpak-builder root state directory: %s",
+            FLATPAK_BUILDER_STATE_DIR,
+        )
 
-    if args.output_dir:
-        output_dir = os.path.abspath(args.output_dir)
-    else:
-        output_dir = os.path.abspath(f"./diffoscope_result-{flatpak_id}")
+    output_dir = (
+        os.path.abspath(args.output_dir)
+        if args.output_dir
+        else os.path.abspath(f"./diffoscope_result-{flatpak_id}")
+    )
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
@@ -1262,13 +1270,9 @@ def main() -> int:
             flatpak_id, output_dir, ref_build_source, args.upload_result
         )
         if json_mode:
-            if result == 0:
-                msg = "Success"
-            elif result == 42:
-                msg = "Unreproducible"
-            else:
-                msg = "Failure"
+            msg = {0: "Success", 42: "Unreproducible"}.get(result, "Failure")
             print_json_output(flatpak_id, result, msg, upload_url)
+
         return result
 
 
