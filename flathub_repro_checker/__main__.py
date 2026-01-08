@@ -95,15 +95,12 @@ def print_json_output(
     else:
         log_url = ""
 
-    if result_url is None:
-        result_url = ""
-
     ret: dict[str, str] = {
         "timestamp": timestamp,
         "appid": appid,
         "status_code": str(int(status_code)),
         "log_url": log_url,
-        "result_url": result_url,
+        "result_url": result_url or "",
         "message": msg,
     }
 
