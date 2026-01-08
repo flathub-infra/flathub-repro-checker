@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import flathub_repro_checker.__main__ as repro
+from flathub_repro_checker.__main__ import ExitCode, ReproResult
 
 
 @pytest.fixture(autouse=True)
@@ -169,15 +170,13 @@ class TestJSONOutput:
             assert isinstance(value, str)
 
     def test_status_codes(self, capsys: pytest.CaptureFixture[str]) -> None:
-        for code in (0, 1, 42):
+        for code in (ExitCode.SUCCESS, ExitCode.FAILURE, ExitCode.UNREPRODUCIBLE):
             _, out, _ = self._run(capsys, "com.example.App", code, "msg")
-            self._assert_schema(out)
-            assert out["status_code"] == str(code)
+            assert out["status_code"] == str(int(code))
 
-    def test_invalid_status(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with pytest.raises(SystemExit):
-            repro.print_json_output("com.example.App", 9, "Bad")
-        assert "Unknown status code" in capsys.readouterr().err
+    def test_invalid_status(self) -> None:
+        with pytest.raises(ValueError):
+            repro.ExitCode(9)
 
     def test_timestamp_iso(self, capsys: pytest.CaptureFixture[str]) -> None:
         _, out, _ = self._run(capsys, "com.example.App", 0, "OK")
@@ -265,8 +264,8 @@ class TestDiffoscope:
     @pytest.mark.parametrize(
         "run_result, expected_code",
         [
-            (None, 1),
-            (Mock(returncode=0), 0),
+            (None, ExitCode.FAILURE),
+            (Mock(returncode=0), ExitCode.SUCCESS),
         ],
     )
     @patch("flathub_repro_checker.__main__._run_command")
@@ -274,21 +273,22 @@ class TestDiffoscope:
         self,
         mock_run: Mock,
         run_result: Mock | None,
-        expected_code: int,
+        expected_code: ExitCode,
         temp_dir: str,
     ) -> None:
         mock_run.return_value = run_result
 
         out_dir = os.path.join(temp_dir, "diffoscope-output")
 
-        url, code = repro.run_diffoscope(
+        result = repro.run_diffoscope(
             "/var/lib/flatpak/app/A",
             "/var/lib/flatpak/app/B",
             out_dir,
         )
 
-        assert url is None
-        assert code == expected_code
+        assert isinstance(result, ReproResult)
+        assert result.url is None
+        assert result.code is expected_code
 
 
 class TestMain:
@@ -351,7 +351,7 @@ class TestMain:
         temp_dir: str,
     ) -> None:
         self._sandbox(monkeypatch, temp_dir)
-        mock_run.return_value = (None, 0)
+        mock_run.return_value = ReproResult(None, ExitCode.SUCCESS)
 
         code = self._run_main(
             [
@@ -377,7 +377,10 @@ class TestMain:
         temp_dir: str,
     ) -> None:
         self._sandbox(monkeypatch, temp_dir)
-        mock_run.return_value = ("https://example.com/diff.zip", 42)
+        mock_run.return_value = ReproResult(
+            "https://example.com/diff.zip",
+            ExitCode.UNREPRODUCIBLE,
+        )
 
         code = self._run_main(
             [
@@ -391,6 +394,7 @@ class TestMain:
 
         assert code == 42
         mock_print_json.assert_called_once()
+
         args = mock_print_json.call_args.args
         assert args[1] == 42
         assert args[3] == "https://example.com/diff.zip"
