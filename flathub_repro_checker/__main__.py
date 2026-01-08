@@ -13,9 +13,10 @@ import sys
 import tempfile
 import types
 import zipfile
+from enum import IntEnum
 from functools import lru_cache
 from subprocess import CompletedProcess
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any, NamedTuple, TextIO
 from urllib.parse import quote
 
 from . import __version__
@@ -29,6 +30,17 @@ except ImportError:
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client  # noqa: F401
+
+
+class ExitCode(IntEnum):
+    SUCCESS = 0
+    FAILURE = 1
+    UNREPRODUCIBLE = 42
+
+
+class ReproResult(NamedTuple):
+    url: str | None
+    code: ExitCode
 
 
 ALLOWED_RUNTIMES = (
@@ -66,7 +78,7 @@ FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 
 
 def print_json_output(
-    appid: str, status_code: int, msg: str, result_url: str | None = None
+    appid: str, status_code: ExitCode, msg: str, result_url: str | None = None
 ) -> None:
     timestamp = str(datetime.datetime.now(datetime.timezone.utc).isoformat())
 
@@ -83,17 +95,13 @@ def print_json_output(
     else:
         log_url = ""
 
-    if status_code not in (0, 1, 42):
-        print(f"Unknown status code: {status_code}", file=sys.stderr)  # noqa: T201
-        sys.exit(1)
-
     if result_url is None:
         result_url = ""
 
     ret: dict[str, str] = {
         "timestamp": timestamp,
         "appid": appid,
-        "status_code": str(status_code),
+        "status_code": str(int(status_code)),
         "log_url": log_url,
         "result_url": result_url,
         "message": msg,
@@ -984,10 +992,12 @@ def zip_directory(dir_path: str) -> str | None:
 
 def run_diffoscope(
     folder_a: str, folder_b: str, output_dir: str, upload_results: bool = False
-) -> tuple[str | None, int]:
-    ret = (None, 1)
+) -> ReproResult:
+    ret = ReproResult(None, ExitCode.FAILURE)
+
     if os.path.isdir(output_dir):
         shutil.rmtree(output_dir, ignore_errors=True)
+
     cmd = [
         "diffoscope",
         f"--html-dir={output_dir}",
@@ -995,16 +1005,18 @@ def run_diffoscope(
         folder_a,
         folder_b,
     ]
+
     result = _run_command(
         cmd, check=False, capture_output=True, message="Diffoscope failed", warn=True
     )
     if result is None:
         return ret
+
     if result.returncode == 0:
         logging.info("Result is reproducible")
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        return (None, 0)
+        return ReproResult(None, ExitCode.SUCCESS)
     if result.returncode == 1:
         logging.error("Result is not reproducible")
         if upload_results and os.path.exists(output_dir):
@@ -1013,24 +1025,24 @@ def run_diffoscope(
                 url = upload_to_s3(zip_path)
                 if url:
                     logging.info("Results uploaded to: %s", url)
-                    return (url, 42)
+                    return ReproResult(url, ExitCode.UNREPRODUCIBLE)
                 logging.error("Failed to upload results")
             else:
                 logging.error("Failed to create zip file")
-        return (None, 42)
+        return ReproResult(None, ExitCode.UNREPRODUCIBLE)
     logging.error("Diffoscope failed with code %d", result.returncode)
     return ret
 
 
 def run_repro_check(
     flatpak_id: str, output_dir: str, build_src: str | None, upload_results: bool = False
-) -> tuple[str | None, int]:
+) -> ReproResult:
     backup_info = None
     backup_dir = None
     handled_build_deps = False
     appref = f"app/{flatpak_id}//stable"
 
-    ret = (None, 1)
+    ret = ReproResult(None, ExitCode.FAILURE)
 
     try:
         if not validate_env():
@@ -1108,7 +1120,7 @@ def validate_env() -> bool:
 def report_and_exit(
     json_mode: bool,
     appid: str,
-    code: int,
+    code: ExitCode,
     message: str,
     *,
     level: str = "error",
@@ -1116,9 +1128,9 @@ def report_and_exit(
 ) -> int:
     if json_mode:
         print_json_output(appid, code, message, url)
-        return 0
+        return int(ExitCode.SUCCESS)
     getattr(logging, level)(message)
-    return code
+    return int(code)
 
 
 def parse_args() -> tuple[bool, argparse.Namespace]:
@@ -1208,7 +1220,7 @@ def main() -> int:
         return report_and_exit(
             json_mode,
             "",
-            1,
+            ExitCode.FAILURE,
             "Running the checker as root is unsupported",
         )
 
@@ -1218,14 +1230,14 @@ def main() -> int:
             return report_and_exit(
                 json_mode,
                 "",
-                0,
+                ExitCode.SUCCESS,
                 f"Cleaning up: {REPRO_DATADIR}",
                 level="info",
             )
-        return report_and_exit(json_mode, "", 0, "Nothing to clean", level="info")
+        return report_and_exit(json_mode, "", ExitCode.SUCCESS, "Nothing to clean", level="info")
 
     if not args.appid:
-        return report_and_exit(json_mode, "", 1, "--appid is required")
+        return report_and_exit(json_mode, "", ExitCode.FAILURE, "--appid is required")
 
     flatpak_id = args.appid
 
@@ -1233,7 +1245,7 @@ def main() -> int:
         return report_and_exit(
             json_mode,
             flatpak_id,
-            1,
+            ExitCode.FAILURE,
             f"Running the checker against '{flatpak_id}' is unsupported right now",
         )
 
@@ -1244,7 +1256,7 @@ def main() -> int:
             return report_and_exit(
                 json_mode,
                 flatpak_id,
-                1,
+                ExitCode.FAILURE,
                 f"The path does not exist: {ref_build_path}",
             )
         ref_build_source = ref_build_path
@@ -1266,14 +1278,15 @@ def main() -> int:
 
     lockfile_path = os.path.join(REPRO_DATADIR, "flathub_repro_checker.lock")
     with Lock(lockfile_path):
-        upload_url, result = run_repro_check(
-            flatpak_id, output_dir, ref_build_source, args.upload_result
-        )
+        result = run_repro_check(flatpak_id, output_dir, ref_build_source, args.upload_result)
         if json_mode:
-            msg = {0: "Success", 42: "Unreproducible"}.get(result, "Failure")
-            print_json_output(flatpak_id, result, msg, upload_url)
+            msg = {
+                ExitCode.SUCCESS: "Success",
+                ExitCode.UNREPRODUCIBLE: "Unreproducible",
+            }.get(result.code, "Failure")
+            print_json_output(flatpak_id, result.code, msg, result.url)
 
-        return result
+        return int(result.code)
 
 
 if __name__ == "__main__":
