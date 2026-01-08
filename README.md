@@ -51,16 +51,17 @@ options:
   --upload-result    Upload results to AWS S3. Requires boto3. Use AWS_S3_BUCKET_NAME to specify bucket name
   --cleanup          Cleanup all state
 
-    This tool only works on "app" Flatpak refs for now and any other ref
-    will return an exit code of 1.
+    This tool only works on "app" Flatpak refs on Flathub and any other
+    ref will return an exit code of 2.
 
     This uses a custom Flatpak root directory. Set the FLATPAK_USER_DIR
     environment variable to override that.
 
     STATUS CODES:
       0   Success
-      42  Unreproducible
       1   Failure
+      2   Unhandled
+      42  Unreproducible
 
     JSON OUTPUT FORMAT:
 

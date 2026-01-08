@@ -14,6 +14,10 @@ pytestmark = pytest.mark.integration
     "appid, allowed_statuses",
     [
         (
+            "com.foo.bar",
+            {"2"},
+        ),
+        (
             "com.valvesoftware.Steam",
             {"42"},
         ),
@@ -111,5 +115,7 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
     if data["status_code"] == "0":
         assert data["message"].lower() == "success"
         assert data["result_url"] == ""
+    elif data["status_code"] == "2":
+        assert "unsupported" in data["message"].lower()
     elif data["status_code"] == "42":
         assert "repro" in data["message"].lower()
