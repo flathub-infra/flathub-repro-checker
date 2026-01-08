@@ -16,7 +16,7 @@ import zipfile
 from enum import IntEnum
 from functools import lru_cache
 from subprocess import CompletedProcess
-from typing import TYPE_CHECKING, Any, NamedTuple, TextIO
+from typing import TYPE_CHECKING, Any, NamedTuple, NoReturn, TextIO
 from urllib.parse import quote
 
 from . import __version__
@@ -79,7 +79,7 @@ FLATPAK_BUILDER_STATE_DIR = os.path.join(REPRO_DATADIR, "flatpak_builder_state")
 
 def print_json_output(
     appid: str, status_code: ExitCode, msg: str, result_url: str | None = None
-) -> None:
+) -> NoReturn:
     timestamp = str(datetime.datetime.now(datetime.timezone.utc).isoformat())
 
     gh_server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
