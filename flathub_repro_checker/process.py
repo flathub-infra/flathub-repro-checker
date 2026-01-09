@@ -67,12 +67,15 @@ def _run_flatpak(
     warn: bool = False,
     env: dict[str, str] | None = None,
 ) -> CompletedProcess[str] | None:
-    env = os.environ.copy()
-    if "FLATPAK_USER_DIR" not in env:
-        env["FLATPAK_USER_DIR"] = FLATPAK_ROOT_DIR
+    cur_env = os.environ.copy()
+    if env:
+        cur_env.update(env)
+
+    if "FLATPAK_USER_DIR" not in cur_env:
+        cur_env["FLATPAK_USER_DIR"] = FLATPAK_ROOT_DIR
 
     if is_inside_container():
-        env["FLATPAK_SYSTEM_HELPER_ON_SESSION"] = "foo"
+        cur_env["FLATPAK_SYSTEM_HELPER_ON_SESSION"] = "foo"
 
     return _run_command(
         ["flatpak", *args],
@@ -81,5 +84,5 @@ def _run_flatpak(
         cwd=cwd,
         message=message,
         warn=warn,
-        env=env,
+        env=cur_env,
     )
