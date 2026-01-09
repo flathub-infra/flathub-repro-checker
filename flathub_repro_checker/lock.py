@@ -6,6 +6,8 @@ import os
 import types
 from typing import TextIO
 
+from .config import ExitCode
+
 
 class Lock:
     def __init__(self, path: str) -> None:
@@ -26,7 +28,7 @@ class Lock:
         except OSError as e:
             if e.errno in (errno.EACCES, errno.EAGAIN):
                 logging.error("Another instance is already running. Exiting")
-                raise SystemExit(1) from e
+                raise SystemExit(int(ExitCode.FAILURE)) from e
             raise
 
     def release(self) -> None:
