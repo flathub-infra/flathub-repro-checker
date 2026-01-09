@@ -10,20 +10,22 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import flathub_repro_checker.__main__ as repro
-from flathub_repro_checker.__main__ import ExitCode, ReproResult
+import flathub_repro_checker.__main__ as main
+from flathub_repro_checker import config, flatpak, repro, utils
+from flathub_repro_checker.config import ExitCode, ReproResult
+from flathub_repro_checker.lock import Lock
 
 
 @pytest.fixture(autouse=True)
 def clear_caches() -> Generator[None, None, None]:
     caches: tuple[Any, ...] = (
-        repro.parse_manifest,
-        repro.get_runtime_ref,
-        repro.get_sdk_ref,
-        repro.get_baseapp_ref,
-        repro.get_sources_ref,
-        repro.get_pinned_refs,
-        repro.get_flatpak_arch,
+        flatpak.parse_manifest,
+        flatpak.get_runtime_ref,
+        flatpak.get_sdk_ref,
+        flatpak.get_baseapp_ref,
+        flatpak.get_sources_ref,
+        flatpak.get_pinned_refs,
+        flatpak.get_flatpak_arch,
     )
     for fn in caches:
         fn.cache_clear()
@@ -78,11 +80,11 @@ def manifest() -> dict[str, Any]:
 class TestUtilities:
     def test_fp_builder_filename_to_uri(self) -> None:
         assert (
-            repro.fp_builder_filename_to_uri("https_example.com_example_app.git")
+            utils.fp_builder_filename_to_uri("https_example.com_example_app.git")
             == "https://example.com/example/app.git"
         )
-        assert repro.fp_builder_filename_to_uri("plain") == "plain"
-        assert repro.fp_builder_filename_to_uri("no_underscore") == "no://underscore"
+        assert utils.fp_builder_filename_to_uri("plain") == "plain"
+        assert utils.fp_builder_filename_to_uri("no_underscore") == "no://underscore"
 
     def test_find_git_src_commit(self, temp_dir: str, manifest: dict[str, Any]) -> None:
         manifest_path = os.path.join(temp_dir, "manifest.json")
@@ -90,34 +92,34 @@ class TestUtilities:
             json.dump(manifest, f)
 
         assert (
-            repro.find_git_src_commit(
+            utils.find_git_src_commit(
                 manifest_path,
                 "https://example.com/example/app.git",
             )
             == "xyz789"
         )
         assert (
-            repro.find_git_src_commit(
+            utils.find_git_src_commit(
                 manifest_path,
                 "https://example.com/other/repo.git",
             )
             is None
         )
 
-    @patch("flathub_repro_checker.__main__._run_command")
+    @patch("flathub_repro_checker.flatpak._run_command")
     def test_get_built_app_branch(self, mock_run: Mock, temp_dir: str) -> None:
         manifest_path = os.path.join(temp_dir, "com.example.App.json")
         os.makedirs(os.path.join(temp_dir, "repo"), exist_ok=True)
 
         mock_run.return_value = Mock(stdout="app/com.example.App/x86_64/repro\n")
 
-        assert repro.get_built_app_branch(manifest_path) == "repro"
+        assert flatpak.get_built_app_branch(manifest_path) == "repro"
 
 
 class TestLock:
-    def _make(self, temp_dir: str) -> tuple[repro.Lock, str]:
+    def _make(self, temp_dir: str) -> tuple[Lock, str]:
         path = os.path.join(temp_dir, "flathub_repro_checker.lock")
-        return repro.Lock(path), path
+        return Lock(path), path
 
     def test_acquire_release(self, temp_dir: str) -> None:
         lock, path = self._make(temp_dir)
@@ -136,7 +138,7 @@ class TestLock:
 
     def test_context_manager(self, temp_dir: str) -> None:
         path = os.path.join(temp_dir, "flathub_repro_checker.lock")
-        with repro.Lock(path) as lock:
+        with Lock(path) as lock:
             assert lock.locked
             assert os.path.exists(path)
         assert not lock.locked
@@ -148,7 +150,7 @@ class TestJSONOutput:
         self, capsys: pytest.CaptureFixture[str], *args: Any
     ) -> tuple[int, dict[str, str], str]:
         with pytest.raises(SystemExit) as exc:
-            repro.print_json_output(*args)
+            utils.print_json_output(*args)
 
         captured = capsys.readouterr()
         code_raw = exc.value.code
@@ -176,7 +178,7 @@ class TestJSONOutput:
 
     def test_invalid_status(self) -> None:
         with pytest.raises(ValueError):
-            repro.ExitCode(9)
+            ExitCode(9)
 
     def test_timestamp_iso(self, capsys: pytest.CaptureFixture[str]) -> None:
         _, out, _ = self._run(capsys, "com.example.App", 0, "OK")
@@ -204,18 +206,17 @@ class TestManifestParse:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(manifest, f)
 
-    @patch.object(repro, "REPRO_DATADIR", "")
-    @patch("flathub_repro_checker.__main__.is_ref_in_remote")
-    @patch("flathub_repro_checker.__main__._run_flatpak")
+    @patch("flathub_repro_checker.flatpak.is_ref_in_remote", return_value=True)
+    @patch("flathub_repro_checker.flatpak._run_flatpak")
     def test_manifest_parse(
         self,
         mock_run_flatpak: Mock,
-        mock_is_ref_in_remote: Mock,
+        _: Mock,
         temp_dir: str,
         manifest: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        repro.REPRO_DATADIR = temp_dir
-        mock_is_ref_in_remote.return_value = True
+        monkeypatch.setattr(flatpak, "REPRO_DATADIR", temp_dir)
 
         mock_run_flatpak.return_value = Mock(
             stdout="""
@@ -228,23 +229,23 @@ version = 1.4
 
         self._write_manifest(temp_dir, manifest)
 
-        assert repro.get_runtime_ref("com.example.App") == ["org.freedesktop.Platform//25.08"]
-        assert repro.get_sdk_ref("com.example.App") == ["org.freedesktop.Sdk//25.08"]
-        assert repro.get_baseapp_ref("com.example.App") == ["org.example.BaseApp//1.0"]
+        assert flatpak.get_runtime_ref("com.example.App") == ["org.freedesktop.Platform//25.08"]
+        assert flatpak.get_sdk_ref("com.example.App") == ["org.freedesktop.Sdk//25.08"]
+        assert flatpak.get_baseapp_ref("com.example.App") == ["org.example.BaseApp//1.0"]
 
-        assert repro.get_base_runtime_version("org.freedesktop.Platform", "25.08") == "25.08"
+        assert flatpak.get_base_runtime_version("org.freedesktop.Platform", "25.08") == "25.08"
 
-        assert set(repro.get_build_extension_refs("com.example.App")) == {
+        assert set(flatpak.get_build_extension_refs("com.example.App")) == {
             "org.freedesktop.Sdk.Extension.rust-stable//25.08",
             "org.freedesktop.Sdk.Extension.llvm//25.08",
             "org.freedesktop.Sdk.Extension.node18//25.08",
         }
 
-        assert repro.get_sources_ref("com.example.App") == [
+        assert flatpak.get_sources_ref("com.example.App") == [
             "runtime/com.example.App.Sources/x86_64/stable"
         ]
 
-        assert set(repro.get_build_deps_refs("com.example.App")) == {
+        assert set(flatpak.get_build_deps_refs("com.example.App")) == {
             "org.freedesktop.Platform//25.08",
             "org.freedesktop.Sdk//25.08",
             "org.example.BaseApp//1.0",
@@ -253,7 +254,7 @@ version = 1.4
             "org.freedesktop.Sdk.Extension.node18//25.08",
         }
 
-        assert repro.get_pinned_refs("com.example.App") == {
+        assert flatpak.get_pinned_refs("com.example.App") == {
             "org.freedesktop.Platform//25.08": "runtimecommit123",
             "org.freedesktop.Sdk//25.08": "sdkcommit456",
             "org.example.BaseApp//1.0": "basecommit789",
@@ -268,7 +269,7 @@ class TestDiffoscope:
             (Mock(returncode=0), ExitCode.SUCCESS),
         ],
     )
-    @patch("flathub_repro_checker.__main__._run_command")
+    @patch("flathub_repro_checker.repro._run_command")
     def test_run_diffoscope_basic_outcomes(
         self,
         mock_run: Mock,
@@ -296,7 +297,7 @@ class TestMain:
         old_argv = sys.argv[:]
         sys.argv = ["flathub-repro-checker", *argv]
         try:
-            return repro.main()
+            return main.main()
         finally:
             sys.argv = old_argv
 
@@ -309,13 +310,13 @@ class TestMain:
         sys.argv = ["flathub-repro-checker", *argv]
         try:
             with pytest.raises(SystemExit) as exc:
-                repro.main()
+                main.main()
 
             exit_code = exc.value.code
             assert isinstance(exit_code, int)
 
             captured = capsys.readouterr()
-            data = json.loads(captured.out)
+            data: dict[str, str] = json.loads(captured.out)
 
             return exit_code, data
         finally:
@@ -334,13 +335,13 @@ class TestMain:
             assert isinstance(value, str)
 
     def _sandbox(self, monkeypatch: pytest.MonkeyPatch, temp_dir: str) -> None:
-        monkeypatch.setattr(repro, "REPRO_DATADIR", temp_dir)
+        monkeypatch.setattr(main, "REPRO_DATADIR", temp_dir)
         monkeypatch.setattr(
-            repro,
+            config,
             "FLATPAK_BUILDER_STATE_DIR",
             os.path.join(temp_dir, "builder"),
         )
-        os.makedirs(repro.FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
+        os.makedirs(config.FLATPAK_BUILDER_STATE_DIR, exist_ok=True)
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=True)
     def test_root_rejected_json(
@@ -421,7 +422,7 @@ class TestMain:
         _validate_env: Mock,
         _is_root: Mock,
     ) -> None:
-        code = self._run_main(["--appid", next(iter(repro.UNSUPPORTED_FLATPAK_IDS))])
+        code = self._run_main(["--appid", next(iter(config.UNSUPPORTED_FLATPAK_IDS))])
         assert code == ExitCode.UNHANDLED
 
     @patch("flathub_repro_checker.__main__.is_root", return_value=False)
