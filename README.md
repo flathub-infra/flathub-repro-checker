@@ -5,6 +5,12 @@ reproducibility using [diffoscope](https://diffoscope.org/).
 
 ### Dependencies
 
+Docker image:
+
+The `ghcr.io/flathub-infra/flatpak-builder-lint:latest` comes with all
+the necessary dependencies along with the `flathub-repro-checker`
+pre-installed.
+
 Debian/Ubuntu:
 
 ```sh
@@ -51,8 +57,8 @@ options:
   --upload-result    Upload results to AWS S3. Requires boto3. Use AWS_S3_BUCKET_NAME to specify bucket name
   --cleanup          Cleanup all state
 
-    This tool only works on "app" Flatpak refs on Flathub and any other
-    ref will return an exit code of 2.
+    This tool only supports x86_64 app Flatpak refs with the stable
+    branch from Flathub and any other ref will return an exit code of 2.
 
     This uses a custom Flatpak root directory. Set the FLATPAK_USER_DIR
     environment variable to override that.
