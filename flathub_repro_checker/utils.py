@@ -102,7 +102,7 @@ def fp_builder_filename_to_uri(name: str) -> str:
 def upload_to_s3(path: str) -> str:
     url = ""
 
-    if not BOTO3_AVAIL:
+    if not ensure_boto3():
         logging.error("Uploading results requires 'boto3', but it is not installed")
         return url
 
