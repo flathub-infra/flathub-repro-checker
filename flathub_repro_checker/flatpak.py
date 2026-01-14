@@ -82,8 +82,24 @@ def replace_git_sources(
     def walk_modules(modules: list[dict[str, Any]]) -> None:
         for module in modules:
             for source in module.get("sources", []):
-                if source.get("type") == "git" and source.get("url") in file_url_map:
-                    source["url"] = file_url_map[source["url"]]
+                if source.get("type") == "git":
+                    old_url = source.get("url")
+
+                    if old_url not in file_url_map:
+                        continue
+
+                    new_url = file_url_map[old_url]
+                    source["url"] = new_url
+
+                    logging.info(
+                        (
+                            "Replaced git source URL with checkout retrieved from "
+                            "Sources extension: %s → %s"
+                        ),
+                        old_url,
+                        new_url,
+                    )
+
             walk_modules(module.get("modules", []))
 
     walk_modules(data.get("modules", []))
@@ -316,8 +332,10 @@ class FlatpakSession:
                     if os.path.exists(dest):
                         shutil.rmtree(dest)
                     shutil.copytree(src, dest)
+                    logging.info("Retrieved directory %s from Sources extension", src)
                 else:
                     shutil.copy2(src, dest)
+                    logging.info("Retrieved file %s from Sources extension", src)
 
         if sources_downloads_dir and os.path.isdir(sources_downloads_dir):
             for item in os.listdir(sources_downloads_dir):
@@ -325,8 +343,10 @@ class FlatpakSession:
                 dest = os.path.join(state_dir_downloads, item)
                 if os.path.isdir(src):
                     shutil.copytree(src, dest, dirs_exist_ok=True)
+                    logging.info("Retrieved directory %s from Sources extension", src)
                 else:
                     shutil.copy2(src, dest)
+                    logging.info("Retrieved file %s from Sources extension", src)
 
         for path in self.manifest.collect_src_paths():
             target = os.path.join(manifest_dir, path)
@@ -336,10 +356,12 @@ class FlatpakSession:
             basename = os.path.basename(path)
             for root, _, files in os.walk(manifest_dir):
                 if basename in files:
+                    src = os.path.join(root, basename)
                     shutil.copy2(
-                        os.path.join(root, basename),
+                        src,
                         target,
                     )
+                    logging.info("Retrieved %s from Sources extension", src)
                     break
 
         args = [
