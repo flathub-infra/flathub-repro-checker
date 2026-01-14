@@ -32,7 +32,7 @@ sudo dnf install flatpak flatpak-builder ostree diffoscope
 ### Install
 
 ```sh
-pip install --user git+https://github.com/flathub-infra/flathub-repro-checker.git@v0.2.0#egg=flathub_repro_checker
+pip install --user git+https://github.com/flathub-infra/flathub-repro-checker.git@v0.2.1#egg=flathub_repro_checker
 ```
 
 [boto3](https://pypi.org/project/boto3/) is optionally used to upload
