@@ -294,18 +294,7 @@ def main() -> int:
             )
         ref_build_source = ref_build_path
 
-    os.makedirs(Config.repro_datadir(), exist_ok=True)
-    os.makedirs(Config.flatpak_builder_state_dir(), exist_ok=True)
-
-    if not json_mode:
-        logging.info(
-            "Created data directory: %s",
-            Config.repro_datadir(),
-        )
-        logging.info(
-            "Created flatpak-builder root state directory: %s",
-            Config.flatpak_builder_state_dir(),
-        )
+    Config.ensure_runtime_dirs()
 
     output_dir = (
         os.path.abspath(args.output_dir)

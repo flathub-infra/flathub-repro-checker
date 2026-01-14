@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import IntEnum
 from typing import NamedTuple
@@ -110,6 +111,19 @@ class Config:
             Config.repro_datadir(),
             "reprocheck.log",
         )
+
+    @staticmethod
+    def ensure_runtime_dirs() -> None:
+        dirs = [
+            Config.repro_datadir(),
+            Config.flatpak_root_dir(),
+            Config.flatpak_builder_state_dir(),
+        ]
+
+        for d in dirs:
+            if not os.path.isdir(d):
+                os.makedirs(d, exist_ok=True)
+                logging.info("Created directory: %s", d)
 
     @staticmethod
     def is_inside_container() -> bool:
