@@ -16,10 +16,28 @@ from .utils import ensure_boto3
 
 
 def setup_logging(json_mode: bool = False) -> None:
-    if json_mode:
-        logging.disable(logging.CRITICAL)
-    else:
-        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    log_path = Config.log_file_path()
+    log_dir = os.path.dirname(log_path)
+
+    os.makedirs(log_dir, exist_ok=True)
+
+    if os.path.isfile(log_path):
+        os.remove(log_path)
+
+    handlers: list[logging.Handler] = []
+    log_format = "%(asctime)s %(levelname)s: %(message)s"
+
+    file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(log_format))
+    handlers.append(file_handler)
+
+    if not json_mode:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(console_handler)
+
+    logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
+    logging.info("Initialised logging and created log file: %s", log_path)
 
 
 def validate_env() -> bool:

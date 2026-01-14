@@ -105,6 +105,13 @@ class Config:
         )
 
     @staticmethod
+    def log_file_path() -> str:
+        return os.path.join(
+            Config.repro_datadir(),
+            "reprocheck.log",
+        )
+
+    @staticmethod
     def is_inside_container() -> bool:
         return any(os.path.exists(p) for p in ("/.dockerenv", "/run/.containerenv"))
 
