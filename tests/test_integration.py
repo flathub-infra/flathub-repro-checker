@@ -22,7 +22,7 @@ pytestmark = pytest.mark.integration
             {"42"},
         ),
         (
-            "io.github.kriptolix.Poliedros",
+            "io.github.N3kosempai.hetairos-ai",
             {"0"},
         ),
     ],
