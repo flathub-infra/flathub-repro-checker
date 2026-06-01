@@ -341,11 +341,14 @@ class FlatpakSession:
             for item in os.listdir(sources_downloads_dir):
                 src = os.path.join(sources_downloads_dir, item)
                 dest = os.path.join(state_dir_downloads, item)
+                manifest_dest = os.path.join(manifest_dir, item)
                 if os.path.isdir(src):
                     shutil.copytree(src, dest, dirs_exist_ok=True)
                     logging.info("Retrieved directory %s from Sources extension", src)
                 else:
-                    shutil.copy2(src, dest)
+                    # Files not in a digest directory are files specified by `path` in the manifest
+                    # => copy them to manifest dir so they get picked up by flatpak-builder
+                    shutil.copy2(src, manifest_dest)
                     logging.info("Retrieved file %s from Sources extension", src)
 
         for path in self.manifest.collect_src_paths():
