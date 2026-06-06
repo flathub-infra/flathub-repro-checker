@@ -18,11 +18,11 @@ pytestmark = pytest.mark.integration
             {"2"},
         ),
         (
-            "com.valvesoftware.Steam",
+            "com.google.ChromeDev",
             {"42"},
         ),
         (
-            "io.github.N3kosempai.hetairos-ai",
+            "io.github.gopher64.gopher64",
             {"0"},
         ),
     ],
