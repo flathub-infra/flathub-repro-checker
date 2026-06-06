@@ -288,6 +288,8 @@ class FlatpakSession:
 
         replace_dict: dict[str, str] = {}
 
+        path_sources = set(self.manifest.collect_src_paths())
+
         if sources_git_dir and os.path.isdir(sources_git_dir):
             for item in os.listdir(sources_git_dir):
                 src = os.path.join(sources_git_dir, item)
@@ -340,7 +342,10 @@ class FlatpakSession:
         if sources_downloads_dir and os.path.isdir(sources_downloads_dir):
             for item in os.listdir(sources_downloads_dir):
                 src = os.path.join(sources_downloads_dir, item)
-                dest = os.path.join(state_dir_downloads, item)
+                if item in path_sources:
+                    dest = os.path.join(manifest_dir, item)
+                else:
+                    dest = os.path.join(state_dir_downloads, item)
                 if os.path.isdir(src):
                     shutil.copytree(src, dest, dirs_exist_ok=True)
                     logging.info("Retrieved directory %s from Sources extension", src)
@@ -348,7 +353,7 @@ class FlatpakSession:
                     shutil.copy2(src, dest)
                     logging.info("Retrieved file %s from Sources extension", src)
 
-        for path in self.manifest.collect_src_paths():
+        for path in path_sources:
             target = os.path.join(manifest_dir, path)
             if os.path.exists(target):
                 continue
