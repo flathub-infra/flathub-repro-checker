@@ -32,14 +32,17 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
 
     workdir = workspace / "reproworkdir"
     tmpdir = workdir / "tmp"
+    xdg_data_home = workdir / ".local/share"
 
     seccomp_path = workspace / "flatpak.seccomp.json"
 
     workdir.mkdir(parents=True, exist_ok=True)
     tmpdir.mkdir(parents=True, exist_ok=True)
+    xdg_data_home.mkdir(parents=True, exist_ok=True)
 
     os.chmod(workdir, 0o777)
     os.chmod(tmpdir, 0o777)
+    os.chmod(xdg_data_home, 0o777)
 
     if not seccomp_path.exists():
         urllib.request.urlretrieve(
@@ -55,6 +58,7 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
     env = {
         **os.environ,
         "TMPDIR": "/reproworkdir/tmp",
+        "XDG_DATA_HOME": "/reproworkdir/.local/share",
     }
 
     cmd = [
@@ -76,6 +80,8 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
         f"{workdir}:/reproworkdir",
         "-e",
         "TMPDIR",
+        "-e",
+        "XDG_DATA_HOME",
         "-e",
         "GITHUB_SERVER_URL",
         "-e",
@@ -100,6 +106,12 @@ def test_full_repro_check_flow(appid: str, allowed_statuses: set[str]) -> None:
         text=True,
         env=env,
     )
+
+    log_file = xdg_data_home / "flathub_repro_checker" / "reprocheck.log"
+    if log_file.exists():
+        print("\n=== Start reprocheck.log ===\n")  # noqa: T201
+        print(log_file.read_text(errors="replace"))  # noqa: T201
+        print("\n=== End reprocheck.log ===\n")  # noqa: T201
 
     assert result.returncode == 0, result.stderr
 
