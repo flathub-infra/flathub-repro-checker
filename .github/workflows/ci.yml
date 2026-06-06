@@ -69,4 +69,4 @@ jobs:
 
       - name: Run integration tests
         run: |
-          uv run pytest -m integration -vvv
+          uv run pytest -m integration -vvvs
