@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
             {"2"},
         ),
         (
-            "com.google.ChromeDev",
+            "com.discordapp.Discord",
             {"42"},
         ),
         (
